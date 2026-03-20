@@ -61,7 +61,7 @@ typedef int cpu_identifier_type;
 class cpu_identifier_wrapper
 {
    public:
-    inline cpu_identifier_wrapper() {}
+    inline cpu_identifier_wrapper() : id_(-1) {}
     inline cpu_identifier_wrapper(const cpu_identifier_type &id) : id_(id) {}
 
    public:
