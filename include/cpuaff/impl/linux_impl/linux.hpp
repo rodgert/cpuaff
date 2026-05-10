@@ -32,9 +32,6 @@
 
 #include "../../cpu_spec.hpp"
 
-#include <cstring>
-#include <fstream>
-#include <iomanip>
 #include <map>
 #include <set>
 #include <vector>
@@ -44,11 +41,6 @@
 #include <unistd.h>
 
 #include "sysfs_reader.hpp"
-
-#if defined(CPUAFF_PCI_SUPPORTED)
-#include "../../pci_device_spec.hpp"
-#include "pci_device_reader.hpp"
-#endif
 
 namespace cpuaff
 {
@@ -183,79 +175,6 @@ struct set_affinity
     }
 };
 
-#if defined(CPUAFF_PCI_SUPPORTED)
-
-typedef std::string pci_address_type;
-
-class pci_address_wrapper
-{
-   public:
-    inline pci_address_wrapper() {}
-    inline pci_address_wrapper(const pci_address_type &address)
-        : address_(address)
-    {
-    }
-
-   public:
-    const inline pci_address_type &get() const { return address_; }
-    inline bool operator<(const pci_address_wrapper &rhs) const
-    {
-        return address_ < rhs.address_;
-    }
-
-   private:
-    pci_address_type address_;
-};
-
-struct pci_device_info
-{
-    pci_device_spec spec;
-    numa_type numa;
-    pci_address_type address;
-
-    inline pci_device_info(const pci_device_spec &s,
-                           const numa_type &n,
-                           const pci_address_type &a)
-        : spec(s), numa(n), address(a)
-    {
-    }
-};
-
-typedef std::vector< pci_device_info > pci_loader_vector_type;
-
-struct pci_loader
-{
-    inline bool operator()(pci_loader_vector_type &v)
-    {
-        pci_device_reader device_reader;
-
-        if (device_reader.load())
-        {
-            std::vector< pci_device_reader::raw_pci_info >::const_iterator i =
-                device_reader.devices().begin();
-            std::vector< pci_device_reader::raw_pci_info >::const_iterator
-                iend = device_reader.devices().end();
-
-            for (; i != iend; ++i)
-            {
-                std::ostringstream buf;
-                buf << std::hex;
-                buf << std::setfill('0') << std::setw(4) << i->spec.vendor();
-                buf << ":" << std::setfill('0') << std::setw(4)
-                    << i->spec.device();
-
-                v.push_back(pci_device_info(i->spec, i->numa, i->address));
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-};
-
-#endif
-
 struct traits
 {
     typedef linux_impl::cpu_identifier_type cpu_identifier_type;
@@ -264,13 +183,6 @@ struct traits
     typedef linux_impl::cpu_loader_vector_type cpu_loader_vector_type;
     typedef get_affinity get_affinity_type;
     typedef set_affinity set_affinity_type;
-
-#if defined(CPUAFF_PCI_SUPPORTED)
-    typedef linux_impl::pci_address_type pci_address_type;
-    typedef pci_address_wrapper pci_address_wrapper_type;
-    typedef pci_loader pci_loader_type;
-    typedef linux_impl::pci_loader_vector_type pci_loader_vector_type;
-#endif
 };
 
 }  // namespace linux_impl

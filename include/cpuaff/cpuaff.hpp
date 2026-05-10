@@ -40,17 +40,6 @@
 #include "impl/basic_native_cpu_mapper.hpp"
 #include "impl/basic_round_robin_allocator.hpp"
 
-#if defined(CPUAFF_PCI_SUPPORTED)
-
-#include "impl/basic_pci_device.hpp"
-#include "impl/basic_pci_device_manager.hpp"
-#include "impl/basic_pci_device_set.hpp"
-#include "pci_device_description.hpp"
-#include "pci_device_spec.hpp"
-#include "pci_name_resolver.hpp"
-
-#endif
-
 /*!
  * Namespace for all cpuaff functionality
  */
@@ -108,25 +97,4 @@ typedef std::set< cpu_spec > cpu_spec_set;
  * cpus such that it returns consecutive cpus from different cores if it can.
  */
 typedef impl::basic_round_robin_allocator< traits > round_robin_allocator;
-
-#if defined(CPUAFF_PCI_SUPPORTED)
-/*!
- * basic_pci_device_manager is a collection of all the pci devices on the
- * system.
- */
-typedef impl::basic_pci_device_manager< traits > pci_device_manager;
-
-/*!
- * basic_pci_device is a representation of a pci_device on the system.  It
- * contains identification, address, and numa information.  The device can
- * then be used to determine what cpus are local to it.
- */
-typedef impl::basic_pci_device< traits > pci_device;
-
-/*!
- * A set that can hold unique pci devices
- */
-typedef impl::basic_pci_device_set< traits > pci_device_set;
-
-#endif
-}
+}  // namespace cpuaff

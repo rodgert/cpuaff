@@ -177,10 +177,10 @@ class cpu_spec
                 processing_unit_ == rhs.processing_unit_);
     }
     /*!
-    *  Stream in operator
-    *
-    * \parse a string triplet of socket,core,processing_unit into a cpu spec
-    */
+     *  Stream in operator
+     *
+     * \parse a string triplet of socket,core,processing_unit into a cpu spec
+     */
     friend inline std::istream &operator>>(std::istream &s, cpu_spec &rhs)
     {
         s >> rhs.socket_;
@@ -192,10 +192,10 @@ class cpu_spec
         return s;
     }
     /*!
-    *  Stream out operator
-    *
-    *  stream out socket,core,processing_unit
-    */
+     *  Stream out operator
+     *
+     *  stream out socket,core,processing_unit
+     */
 
     friend inline std::ostream &operator<<(std::ostream &s, const cpu_spec &rhs)
     {

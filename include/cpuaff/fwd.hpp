@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "options.hpp"
 #include <stdint.h>
 
 namespace cpuaff
@@ -50,33 +49,10 @@ class basic_cpu_set;
 
 template < typename TRAITS >
 class basic_affinity_stack;
-
-template < typename TRAITS >
-class basic_affinity_stack;
 }  // namespace impl
 
 typedef int32_t socket_type;
 typedef int32_t core_type;
 typedef int32_t processing_unit_type;
 typedef int32_t numa_type;
-
-#if defined(CPUAFF_PCI_SUPPORTED)
-
-class pci_device_spec;
-class pci_device_description;
-class pci_name_resolver;
-
-namespace impl
-{
-template < typename TRAITS >
-class basic_pci_device;
-
-template < typename TRAITS >
-class basic_pci_device_set;
-}  // namespace impl
-
-typedef int32_t pci_vendor_id_type;
-typedef int32_t pci_device_id_type;
-
-#endif
 }  // namespace cpuaff

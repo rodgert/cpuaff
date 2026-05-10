@@ -271,7 +271,7 @@ inline bool load_cpus(std::vector< pu > &pus)
 
     return !!pus.size();
 }
-}
+}  // namespace sysfs_reader
 
 }  // namespace linux_impl
 }  // namespace impl

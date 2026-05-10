@@ -21,20 +21,16 @@ AC_TYPE_INT32_T
 AC_TYPE_SIZE_T
 AC_TYPE_UINT32_T
 
-# Checks for library functions.
+# cpuaff v2 is Linux-only.
 AC_CANONICAL_HOST
 case $host in
 	*linux*)
 		;;
 	*)
-		AC_CHECK_LIB(hwloc, hwloc_topology_init)
+		AC_MSG_ERROR([cpuaff requires Linux. Use v1.0.6-htaa.1 or earlier for other platforms.])
 		;;
 esac
 
-AC_ARG_WITH([hwloc], AS_HELP_STRING([--with-hwloc],
-	    [Use hwloc library even if this platform doesn't require it]),
-	    CPPFLAGS="$CPPFLAGS -DCPUAFF_USE_HWLOC" LIBS="$LIBS -lhwloc")
-	   
 CXXFLAGS="$CXXFLAGS -Wall -Werror -pedantic"
 
 AC_OUTPUT

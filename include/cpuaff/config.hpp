@@ -30,8 +30,13 @@
 
 #pragma once
 
+#if !defined(__linux__)
+#error \
+    "cpuaff v2 is Linux-only. Earlier releases supported macOS/BSD/Windows via the now-removed null_impl and hwloc_impl backends; for non-Linux platforms use v1.0.6-htaa.1 or earlier."
+#endif
+
 #include "fwd.hpp"
-#include "options.hpp"
+#include "impl/linux_impl/linux.hpp"
 
 namespace cpuaff
 {
@@ -46,70 +51,12 @@ struct basic_traits
         typename LOADER_TRAITS::cpu_loader_vector_type cpu_loader_vector_type;
     typedef typename LOADER_TRAITS::get_affinity_type get_affinity_type;
     typedef typename LOADER_TRAITS::set_affinity_type set_affinity_type;
-
-#ifdef CPUAFF_PCI_SUPPORTED
-    typedef typename LOADER_TRAITS::pci_address_type pci_address_type;
-    typedef typename LOADER_TRAITS::pci_address_wrapper_type
-        pci_address_wrapper_type;
-    typedef typename LOADER_TRAITS::pci_loader_type pci_loader_type;
-    typedef
-        typename LOADER_TRAITS::pci_loader_vector_type pci_loader_vector_type;
-#endif
-
     typedef typename NATIVE_TRAITS::cpu_identifier_type native_cpu_type;
     typedef typename NATIVE_TRAITS::cpu_identifier_wrapper_type
         native_cpu_wrapper_type;
     typedef typename NATIVE_TRAITS::get_affinity_type native_get_affinity_type;
 };
-}  // namespace cpuaff
 
-#if defined(__linux__)
-#include "impl/linux_impl/linux.hpp"
-
-#if !defined(CPUAFF_USE_HWLOC)
-namespace cpuaff
-{
 typedef basic_traits< impl::linux_impl::traits, impl::linux_impl::traits >
     traits;
 }  // namespace cpuaff
-#else
-#include "impl/hwloc_impl/hwloc.hpp"
-
-namespace cpuaff
-{
-typedef basic_traits< impl::hwloc_impl::traits, impl::linux_impl::traits >
-    traits;
-}
-#endif
-
-#elif defined(_WIN32) || defined(_AIX) || defined(__FreeBSD__) || \
-    defined(NetBSD) || defined(_hpux) || defined(sun) ||          \
-    (defined(__APPLE__) && defined(__MACH__))
-
-#if defined(CPUAFF_USE_HWLOC)
-#include "impl/hwloc_impl/hwloc.hpp"
-#include "impl/null_impl/null.hpp"
-
-namespace cpuaff
-{
-typedef basic_traits< impl::hwloc::traits, impl::null::traits > traits;
-}  // namespace cpuaff
-#else
-#include "impl/null_impl/null.hpp"
-
-namespace cpuaff
-{
-typedef basic_traits< impl::null::traits, impl::null::traits > traits;
-}  // namespace cpuaff
-#endif
-
-#else
-
-#include "impl/null_impl/null.hpp"
-
-namespace cpuaff
-{
-typedef basic_traits< impl::null::traits, impl::null::traits > traits;
-}  // namespace cpuaff
-
-#endif

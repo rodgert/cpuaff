@@ -48,10 +48,6 @@ examples/affinity_stack
 examples/affinity_stack.o
 examples/list_cpus
 examples/list_cpus.o
-examples/list_nearby_cpus
-examples/list_nearby_cpus.o
-examples/list_pci_devices
-examples/list_pci_devices.o
 examples/simple_affinity
 examples/simple_affinity.o
 include/Makefile
