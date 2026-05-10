@@ -28,6 +28,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file impl/basic_affinity_manager.hpp
+ * \brief Topology-aware affinity manager: enumerates the system's cpus
+ * and provides the legacy bool-returning and Phase 4 \c try_*-style
+ * APIs for getting / setting / pinning thread affinity.
+ *
+ * \see cpuaff::impl::basic_affinity_manager
+ * \see cpuaff::affinity_errc
+ * \see cpuaff::expected
+ */
+
 #pragma once
 
 #include "../config.hpp"
@@ -45,10 +56,23 @@ namespace cpuaff
 namespace impl
 {
 /*!
+ * \brief Topology-aware affinity manager.
+ *
  * basic_affinity_manager is a collection of all the valid cpus.  It provides
  * interfaces to get and set cpu affinity as well as ways to classify cpus
  * on the system so that intelligent choices can be made about what affinity a
  * thread should have.
+ *
+ * Two API flavours coexist:
+ *
+ * - The legacy bool-returning surface (\c get_affinity, \c set_affinity,
+ *   \c pin) is preserved for v1.x source-compat but is \c [[deprecated]].
+ * - The Phase 4 \c try_* surface returns
+ *   \c cpuaff::expected<T,std::error_code> with the underlying errno
+ *   (EINVAL / EPERM / ESRCH / ENOMEM) tagged in
+ *   \ref cpuaff::affinity_category.
+ *
+ * \see cpuaff::affinity_errc
  */
 template < typename TRAITS >
 class basic_affinity_manager
@@ -425,10 +449,13 @@ class basic_affinity_manager
     // ---------------------------------------------------------------
 
     /*!
-     * Get the affinity of the calling thread.
+     * \brief Get the affinity of the calling thread.
      *
      * \return cpu_set_type on success; std::error_code on failure
      * (EINVAL / ENOMEM via cpuaff::affinity_category).
+     *
+     * \see try_get_available_cpus()
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_get_affinity() const
@@ -437,7 +464,15 @@ class basic_affinity_manager
     }
 
     /*!
-     * Get the affinity of the given pthread.
+     * \brief Get the affinity of the given pthread.
+     *
+     * \param t the target thread (typically obtained from
+     *          \c std::thread::native_handle()).
+     * \return the cpu_set_type the thread is permitted to run on, or
+     *         a std::error_code carrying the underlying errno
+     *         (commonly ESRCH if the thread has exited).
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_get_affinity(pthread_t t) const
@@ -450,11 +485,15 @@ class basic_affinity_manager
     }
 
     /*!
-     * Set the affinity of the calling thread.
+     * \brief Set the affinity of the calling thread.
      *
      * \param cpus [in] the set of cpus that this thread can run on
      * \return cpuaff::expected<void, std::error_code>; the error
-     * carries the underlying errno.
+     *         carries the underlying errno (commonly EINVAL when the
+     *         requested mask references CPUs the cgroup forbids, or
+     *         EPERM when CAP_SYS_NICE is missing).
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_set_affinity(const cpu_set_type &cpus) const noexcept
@@ -468,7 +507,17 @@ class basic_affinity_manager
     }
 
     /*!
-     * Set the affinity of the given pthread.
+     * \brief Set the affinity of the given pthread.
+     *
+     * \param t the target thread (typically obtained from
+     *          \c std::thread::native_handle()).
+     * \param cpus [in] the set of cpus that the target thread can run on.
+     * \return cpuaff::expected<void, std::error_code>; the error
+     *         carries the underlying errno (commonly ESRCH when the
+     *         target thread has exited, EINVAL / EPERM as for the
+     *         self-targeting overload).
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_set_affinity(pthread_t t,
@@ -483,7 +532,13 @@ class basic_affinity_manager
     }
 
     /*!
-     * Pin the calling thread to a single cpu.
+     * \brief Pin the calling thread to a single cpu.
+     *
+     * \param cpu [in] the cpu to pin this thread to.
+     * \return cpuaff::expected<void, std::error_code>; the error
+     *         carries the underlying errno.
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_pin(const cpu_type &cpu) const noexcept
@@ -497,7 +552,15 @@ class basic_affinity_manager
     }
 
     /*!
-     * Pin the given pthread to a single cpu.
+     * \brief Pin the given pthread to a single cpu.
+     *
+     * \param t the target thread (typically obtained from
+     *          \c std::thread::native_handle()).
+     * \param cpu [in] the cpu to pin the target thread to.
+     * \return cpuaff::expected<void, std::error_code>; the error
+     *         carries the underlying errno.
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_pin(pthread_t t, const cpu_type &cpu) const noexcept
@@ -511,32 +574,53 @@ class basic_affinity_manager
     }
 
     /*!
-     * Get the cpus the calling thread is actually permitted to run on
-     * — i.e. the intersection of the topology's cpus (loaded from
-     * /sys at construction) with the affinity mask the kernel reports
-     * for this thread.
+     * \brief Get the cpus the calling thread is actually permitted
+     * to run on — i.e. the intersection of the topology's cpus
+     * (loaded from /sys at construction) with the affinity mask the
+     * kernel reports for this thread.
      *
      * Use this rather than get_cpus() when scheduling work: under
      * systemd CPUAffinity= or Docker --cpuset-cpus the topology will
      * contain CPUs that try_set_affinity() would refuse with EINVAL.
+     *
+     * \note An empty result (intersection is empty) is returned as
+     * `expected{empty_set}`, not as an error. That state is unusual —
+     * it typically signals a cgroup misconfiguration that strands
+     * the process — but since "empty mask" is technically a valid
+     * scheduling state callers should check has_value() *and*
+     * !empty() before treating the result as workable.
+     *
+     * \return the intersection of the topology with the calling
+     *         thread's affinity mask, or a std::error_code on failure
+     *         to query the kernel.
+     *
+     * \see try_get_affinity()
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_get_available_cpus() const
     {
-        auto avail = try_get_affinity();
-        if (!avail)
-        {
-            return cpuaff::unexpected< std::error_code >(avail.error());
-        }
-        cpu_set_type result;
-        for (const auto &cpu : cpus_)
-        {
-            if (avail->find(cpu) != avail->end())
-            {
-                result.insert(cpu);
-            }
-        }
-        return result;
+        return intersect_topology_with(try_get_affinity());
+    }
+
+    /*!
+     * \brief Get the cpus the given pthread is actually permitted to
+     * run on. Symmetric pthread_t variant of try_get_available_cpus().
+     *
+     * \param t the target thread (typically obtained from
+     *          \c std::thread::native_handle()).
+     * \return the intersection of the topology with the target
+     *         thread's affinity mask, or a std::error_code on failure
+     *         (commonly ESRCH if the target has exited).
+     *
+     * \see try_get_available_cpus() for the empty-intersection
+     *      semantics — same caveats apply here.
+     * \since v2.0.0-htaa.beta.1
+     */
+    [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
+    try_get_available_cpus(pthread_t t) const
+    {
+        return intersect_topology_with(try_get_affinity(t));
     }
 
    private:
@@ -565,6 +649,28 @@ class basic_affinity_manager
             out.insert(cpu);
         }
         return out;
+    }
+
+    // Shared body for both try_get_available_cpus() overloads:
+    // intersect the configured topology with whatever affinity-query
+    // result was passed in.
+    inline cpuaff::expected< cpu_set_type, std::error_code >
+    intersect_topology_with(
+        cpuaff::expected< cpu_set_type, std::error_code > avail) const
+    {
+        if (!avail)
+        {
+            return cpuaff::unexpected< std::error_code >(avail.error());
+        }
+        cpu_set_type result;
+        for (const auto &cpu : cpus_)
+        {
+            if (avail->find(cpu) != avail->end())
+            {
+                result.insert(cpu);
+            }
+        }
+        return result;
     }
    public:
 

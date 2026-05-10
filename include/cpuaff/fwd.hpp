@@ -28,6 +28,18 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file fwd.hpp
+ * \brief Forward declarations and topology integer typedefs.
+ *
+ * Pulled in by every cpuaff header that needs to refer to a class
+ * template before its full definition is available, plus the small
+ * integer typedefs used to identify positions in the CPU topology.
+ * Including this header rather than the full \ref cpuaff.hpp keeps
+ * compile-time cost down for code that only needs to name cpuaff
+ * types in declarations (e.g. function signatures).
+ */
+
 #pragma once
 
 #include <stdint.h>
@@ -51,8 +63,27 @@ template < typename TRAITS >
 class basic_affinity_stack;
 }  // namespace impl
 
+/*!
+ * \brief Zero-based socket (physical package) identifier.
+ */
 typedef int32_t socket_type;
+
+/*!
+ * \brief Zero-based core identifier within its socket.
+ */
 typedef int32_t core_type;
+
+/*!
+ * \brief Zero-based processing unit (hardware thread / hyperthread)
+ * identifier within its core.
+ */
 typedef int32_t processing_unit_type;
+
+/*!
+ * \brief Zero-based NUMA node identifier.
+ *
+ * \c -1 indicates the system did not report NUMA topology and the
+ * CPU is treated as belonging to a single (anonymous) node.
+ */
 typedef int32_t numa_type;
 }  // namespace cpuaff

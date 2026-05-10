@@ -28,6 +28,15 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file impl/basic_affinity_stack.hpp
+ * \brief LIFO-style affinity scoping helper: push the current
+ * affinity, do scoped work, pop to restore.
+ *
+ * \see cpuaff::impl::basic_affinity_stack
+ * \see cpuaff::impl::basic_affinity_manager
+ */
+
 #pragma once
 
 #include "../config.hpp"
@@ -44,9 +53,19 @@ namespace cpuaff
 namespace impl
 {
 /*!
+ * \brief LIFO-style helper for scoped affinity changes.
+ *
  * basic_affinity_stack is used to keep track of affinities as you get and set
  * them.  It is basically a wrapper for an affinity_manager that gives you the
  * ability to keep track of what affinities have been and reset them later.
+ *
+ * Both the legacy bool-returning surface (\c [[deprecated]]) and the
+ * Phase 4 \c try_* surface returning
+ * \c cpuaff::expected<T,std::error_code> are provided. The \c try_*
+ * surface additionally surfaces \ref cpuaff::affinity_errc::stack_empty
+ * when \c try_pop_affinity is called on an empty stack.
+ *
+ * \see cpuaff::affinity_errc
  */
 template < typename TRAITS >
 class basic_affinity_stack
@@ -57,7 +76,7 @@ class basic_affinity_stack
 
    public:
     /*!
-     * Construct a basic_affinity stack for the given affinity_manager
+     * \brief Construct a basic_affinity_stack for the given affinity_manager.
      *
      * \param affinity_manager the affinity_manager that this affinity stack
      *                          should use for getting and setting affinities.
@@ -68,7 +87,10 @@ class basic_affinity_stack
     }
 
     /*!
-     * Push the current cpu affinity onto the stack.
+     * \brief Push the current cpu affinity onto the stack.
+     *
+     * \return true if the current affinity was successfully captured and
+     *         pushed; false otherwise.
      *
      * \deprecated Prefer try_push_affinity() — returns
      * cpuaff::expected with errno diagnostics. Will be removed in v3.
@@ -83,8 +105,12 @@ class basic_affinity_stack
     }
 
     /*!
-     * Pops a previously pushed affinity off the stack and sets the current
-     * thread's affinity to the popped affinity.
+     * \brief Pop a previously pushed affinity off the stack and set the
+     * current thread's affinity to the popped affinity.
+     *
+     * \return true if a recorded affinity was successfully popped and
+     *         applied; false if the stack was empty or the
+     *         set-affinity call failed.
      *
      * \deprecated Prefer try_pop_affinity() — returns
      * cpuaff::expected with errno diagnostics. Will be removed in v3.
@@ -99,7 +125,10 @@ class basic_affinity_stack
     }
 
     /*!
-     * Get the affinity of the calling thread
+     * \brief Get the affinity of the calling thread.
+     *
+     * \param cpus [out] the set of cpus the calling thread can run on.
+     * \return true on success; false if the kernel query failed.
      *
      * \deprecated Prefer try_get_affinity() — returns
      * cpuaff::expected with errno diagnostics. Will be removed in v3.
@@ -114,7 +143,10 @@ class basic_affinity_stack
     }
 
     /*!
-     * Set the affinity of the calling thread.
+     * \brief Set the affinity of the calling thread.
+     *
+     * \param cpus [in] the set of cpus the calling thread should run on.
+     * \return true on success; false if the kernel call failed.
      *
      * \deprecated Prefer try_set_affinity() — returns
      * cpuaff::expected with errno diagnostics. Will be removed in v3.
@@ -131,10 +163,13 @@ class basic_affinity_stack
     // ---------------------------------------------------------------
 
     /*!
-     * Push the current cpu affinity onto the stack.
+     * \brief Push the current cpu affinity onto the stack.
      *
      * \return cpuaff::expected<void, std::error_code>; the error
-     * carries the underlying errno from sched_getaffinity.
+     *         carries the underlying errno from sched_getaffinity
+     *         (commonly EINVAL / ENOMEM).
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_push_affinity()
@@ -149,11 +184,16 @@ class basic_affinity_stack
     }
 
     /*!
-     * Pop a previously pushed affinity off the stack and restore it.
+     * \brief Pop a previously pushed affinity off the stack and restore it.
      *
-     * Returns ENODATA (mapped to cpuaff::affinity_errc::not_supported's
-     * sibling — std::errc::no_message_available) when the stack is
-     * empty; otherwise the error code from try_set_affinity().
+     * \return cpuaff::expected<void, std::error_code>;
+     *         \ref cpuaff::affinity_errc::stack_empty when the stack
+     *         has no recorded affinity to restore; otherwise
+     *         propagates the error code from try_set_affinity().
+     *
+     * \warning Pairs with try_push_affinity(); calling this without a
+     *          prior push yields stack_empty rather than UB.
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_pop_affinity()
@@ -161,7 +201,7 @@ class basic_affinity_stack
         if (affinity_stack_.empty())
         {
             return cpuaff::unexpected< std::error_code >(
-                std::make_error_code(std::errc::no_message_available));
+                cpuaff::make_error_code(cpuaff::affinity_errc::stack_empty));
         }
         cpu_set_type cpus = affinity_stack_.top();
         affinity_stack_.pop();
@@ -169,7 +209,14 @@ class basic_affinity_stack
     }
 
     /*!
-     * Get the affinity of the calling thread.
+     * \brief Get the affinity of the calling thread.
+     *
+     * \return the cpu_set_type the calling thread is permitted to run
+     *         on, or a std::error_code carrying the underlying errno.
+     *
+     * \note Forwards directly to the underlying affinity_manager;
+     *       does not consult the stack.
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_get_affinity()
@@ -178,7 +225,15 @@ class basic_affinity_stack
     }
 
     /*!
-     * Set the affinity of the calling thread.
+     * \brief Set the affinity of the calling thread.
+     *
+     * \param cpus [in] the set of cpus the calling thread should run on.
+     * \return cpuaff::expected<void, std::error_code>; the error
+     *         carries the underlying errno.
+     *
+     * \note Forwards directly to the underlying affinity_manager;
+     *       does not push onto the stack.
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
     try_set_affinity(const cpu_set_type &cpus)

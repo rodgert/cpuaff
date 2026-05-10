@@ -28,6 +28,19 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file sysfs_reader.hpp
+ * \brief CPU topology discovery via \c /sys.
+ * \internal
+ *
+ * Free functions in the \c sysfs_reader namespace walk
+ * \c /sys/devices/system/node and \c /sys/devices/system/cpu to
+ * enumerate processing units and their socket / core / NUMA-node
+ * attributes. Used by
+ * \ref cpuaff::impl::linux_impl::cpu_loader; not part of the
+ * public API.
+ */
+
 #pragma once
 #include "../../cpu_spec.hpp"
 #include "set_reader.hpp"
@@ -50,6 +63,11 @@ namespace linux_impl
 {
 namespace sysfs_reader
 {
+/*!
+ * \brief Aggregate describing one processing unit discovered in
+ * \c /sys.
+ * \internal
+ */
 struct pu
 {
     int32_t node;
@@ -58,6 +76,7 @@ struct pu
     int32_t native;
 };
 
+/*! \brief Read a kernel cpulist file into \p set. \internal */
 inline bool read_list(std::set< int32_t > &set, const std::string &_file)
 {
     set.clear();
@@ -75,11 +94,13 @@ inline bool read_list(std::set< int32_t > &set, const std::string &_file)
     return !!set.size();
 }
 
+/*! \brief Read the set of online NUMA nodes. \internal */
 inline bool read_nodes(std::set< int32_t > &nodes)
 {
     return read_list(nodes, "/sys/devices/system/node/online");
 }
 
+/*! \brief Read the cpulist for \p node. \internal */
 inline bool read_cpus(std::set< int32_t > &cpus, int32_t node)
 {
     std::ostringstream buf;
@@ -87,11 +108,13 @@ inline bool read_cpus(std::set< int32_t > &cpus, int32_t node)
     return read_list(cpus, buf.str());
 }
 
+/*! \brief Read the system-wide online cpu list. \internal */
 inline bool read_cpus(std::set< int32_t > &cpus)
 {
     return read_list(cpus, "/sys/devices/system/cpu/online");
 }
 
+/*! \brief Read the physical_package_id for \p cpu. \internal */
 inline int32_t read_socket(int32_t cpu)
 {
     std::ostringstream buf;
@@ -112,6 +135,7 @@ inline int32_t read_socket(int32_t cpu)
     }
 }
 
+/*! \brief Read the physical_package_id for \p cpu under \p node. \internal */
 inline int32_t read_socket(int32_t node, int32_t cpu)
 {
     std::ostringstream buf;
@@ -132,6 +156,7 @@ inline int32_t read_socket(int32_t node, int32_t cpu)
     }
 }
 
+/*! \brief Read the core_id for \p cpu. \internal */
 inline int32_t read_core(int32_t cpu)
 {
     std::ostringstream buf;
@@ -151,6 +176,7 @@ inline int32_t read_core(int32_t cpu)
     }
 }
 
+/*! \brief Read the core_id for \p cpu under \p node. \internal */
 inline int32_t read_core(int32_t node, int32_t cpu)
 {
     std::ostringstream buf;
@@ -171,6 +197,7 @@ inline int32_t read_core(int32_t node, int32_t cpu)
     }
 }
 
+/*! \brief Append one cpu's topology (no NUMA node) to \p pus. \internal */
 inline bool read_cpu(std::vector< pu > &pus, int32_t cpu)
 {
     int32_t socket = read_socket(cpu);
@@ -185,6 +212,7 @@ inline bool read_cpu(std::vector< pu > &pus, int32_t cpu)
     return true;
 }
 
+/*! \brief Append one cpu's topology under \p node to \p pus. \internal */
 inline bool read_cpu(std::vector< pu > &pus, int32_t node, int32_t cpu)
 {
     int32_t socket = read_socket(node, cpu);
@@ -204,6 +232,7 @@ inline bool read_cpu(std::vector< pu > &pus, int32_t node, int32_t cpu)
     return false;
 }
 
+/*! \brief Append every cpu under \p node to \p pus. \internal */
 inline bool read_node(std::vector< pu > &pus, int32_t node)
 {
     std::set< int32_t > cpus;
@@ -220,6 +249,14 @@ inline bool read_node(std::vector< pu > &pus, int32_t node)
     return !!pus.size();
 }
 
+/*!
+ * \brief Enumerate every processing unit on the system into \p pus.
+ * \internal
+ *
+ * Tries NUMA-aware enumeration first (online nodes -> per-node
+ * cpulist); falls back to the global online cpu list, then to a
+ * directory walk of \c /sys/devices/system/cpu/cpuN.
+ */
 inline bool load_cpus(std::vector< pu > &pus)
 {
     pus.clear();

@@ -28,6 +28,15 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file impl/basic_cpu.hpp
+ * \brief Per-cpu value type carrying topology spec, native id, and
+ * NUMA node.
+ *
+ * \see cpuaff::impl::basic_cpu
+ * \see cpuaff::cpu_spec
+ */
+
 #pragma once
 
 #include "../config.hpp"

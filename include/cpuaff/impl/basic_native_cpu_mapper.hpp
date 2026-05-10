@@ -28,6 +28,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file impl/basic_native_cpu_mapper.hpp
+ * \brief Bidirectional mapping between cpuaff cpu identifiers and
+ * the platform's native cpu identifiers.
+ *
+ * \see cpuaff::impl::basic_native_cpu_mapper
+ */
+
 #pragma once
 
 #include "../config.hpp"
@@ -63,9 +71,20 @@ struct has_identity_native_mapping_v<
 }  // namespace detail
 
 /*!
+ * \brief Bidirectional mapping between cpuaff cpu identifiers and
+ * the platform's native cpu identifiers.
+ *
  * basic_native_cpu_mapper is a utility class that maps native cpu
  * representations to cpus from a basic_cpu_manager.  It may not be available
  * for every platform.
+ *
+ * If the backend's TRAITS opts in by exposing
+ * \c static\ constexpr\ bool\ has_identity_native_mapping = true (as
+ * the linux_impl backend does), the mapping is built directly from
+ * the affinity_manager's enumerated cpus. Otherwise the mapper falls
+ * back to the legacy walk-by-pinning behaviour.
+ *
+ * \see initialize() for the per-backend behaviour difference.
  */
 template < typename TRAITS >
 class basic_native_cpu_mapper
@@ -85,12 +104,13 @@ class basic_native_cpu_mapper
 
    public:
     /*!
-     * Constructs an uninitialized basic_native_cpu_mapper.
+     * \brief Constructs an uninitialized basic_native_cpu_mapper.
      */
     inline basic_native_cpu_mapper() {}
 
     /*!
-     * Initializes a basic_native_cpu_mapper from the given affinity_manager.
+     * \brief Initializes a basic_native_cpu_mapper from the given
+     * affinity_manager.
      *
      * If TRAITS declares `static constexpr bool has_identity_native_mapping
      * = true` (the linux_impl backend does), the mapper is built directly
@@ -105,8 +125,12 @@ class basic_native_cpu_mapper
      * and record the (native, cpu) pair. Restores the original affinity at
      * the end. May fail or hang if pinning isn't possible.
      *
-     * \param affinity_manager the affinity_manager to load configured cpus from
-     * \return true if initialization succeeds, false otherwise
+     * \param affinity_manager the affinity_manager to load configured cpus from.
+     * \return true if initialization succeeds, false otherwise.
+     *
+     * \warning On backends without \c has_identity_native_mapping
+     *          this temporarily migrates the calling thread across
+     *          every CPU; avoid on latency-sensitive threads.
      */
     inline bool initialize(const affinity_manager_type &affinity_manager)
     {
@@ -172,10 +196,10 @@ class basic_native_cpu_mapper
     }
 
     /*!
-     * Get the cpu with the given native identifier.
+     * \brief Get the cpu with the given native identifier.
      *
-     * \param cpu [out] the cpu with the given native identifier
-     * \param native [in] the native cpu identifier
+     * \param cpu [out] the cpu with the given native identifier.
+     * \param native [in] the native cpu identifier.
      * \return true if the cpu is found, false otherwise.
      */
     inline bool get_cpu_from_native(cpu_type &cpu,
@@ -194,10 +218,12 @@ class basic_native_cpu_mapper
     }
 
     /*!
-     * Get the cpu with the given native identifier.
+     * \brief Get the cpu with the given native identifier (raw overload).
      *
-     * \param cpu [out] the cpu with the given native identifier
-     * \param native [in] the native cpu identifier
+     * \param cpu [out] the cpu with the given native identifier.
+     * \param native [in] the native cpu identifier (unwrapped form;
+     *               wrapped internally and forwarded to the
+     *               wrapper-typed overload).
      * \return true if the cpu is found, false otherwise.
      */
     inline bool get_cpu_from_native(cpu_type &cpu,
@@ -207,13 +233,12 @@ class basic_native_cpu_mapper
     }
 
     /*!
-     * Get the native identifier for the given cpu.
+     * \brief Get the native identifier for the given cpu.
      *
-     * \param native [out] native cpu identifier wrapper
-     * \param cpu [in] the cpu
+     * \param native [out] native cpu identifier wrapper.
+     * \param cpu [in] the cpu.
      * \return true if the native identifier is found, false otherwise.
      */
-
     inline bool get_native_from_cpu(native_cpu_wrapper_type &native,
                                     const cpu_type &cpu) const
     {

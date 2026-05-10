@@ -28,6 +28,25 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file linux.hpp
+ * \brief Linux backend trait pack for cpuaff.
+ * \internal
+ *
+ * Implements the loader (\ref cpuaff::impl::linux_impl::cpu_loader,
+ * which calls into \ref cpuaff::impl::linux_impl::sysfs_reader to
+ * walk \c /sys) and the affinity get/set functors that drive
+ * \c sched_*affinity / \c pthread_*affinity_np. The functors expose
+ * both the legacy bool-returning operator() form (kept for v1.x
+ * source-compat) and the newer \c std::error_code -returning
+ * \c query() / \c apply() entry points used by the \c try_*
+ * basic_affinity_manager API.
+ *
+ * Everything in this file is implementation detail — application
+ * code shouldn't reach in here directly. The trait struct at the
+ * bottom is what \ref cpuaff::traits binds to.
+ */
+
 #pragma once
 
 #include "../../cpu_spec.hpp"
@@ -51,16 +70,46 @@ namespace impl
 {
 namespace linux_impl
 {
+/*!
+ * \brief Native CPU identifier on Linux — the kernel CPU id.
+ * \internal
+ */
 typedef int cpu_identifier_type;
 
+/*!
+ * \brief Comparable wrapper around \ref cpu_identifier_type.
+ * \internal
+ *
+ * Wraps the bare \c int so it can serve as a key in associative
+ * containers and so the type system distinguishes a CPU id from a
+ * generic integer.
+ */
 class cpu_identifier_wrapper
 {
    public:
+    /*!
+     * \brief Default-construct with the sentinel value \c -1.
+     */
     inline cpu_identifier_wrapper() : id_(-1) {}
+
+    /*!
+     * \brief Wrap an existing kernel CPU id.
+     * \param id the kernel CPU id.
+     */
     inline cpu_identifier_wrapper(const cpu_identifier_type &id) : id_(id) {}
 
    public:
+    /*!
+     * \brief Read the wrapped kernel CPU id.
+     * \return the kernel CPU id.
+     */
     const inline cpu_identifier_type &get() const { return id_; }
+
+    /*!
+     * \brief Order by wrapped id.
+     * \param rhs other wrapper to compare against.
+     * \return \c true if this id is less than \p rhs's id.
+     */
     inline bool operator<(const cpu_identifier_wrapper &rhs) const
     {
         return id_ < rhs.id_;
@@ -70,6 +119,11 @@ class cpu_identifier_wrapper
     cpu_identifier_type id_;
 };
 
+/*!
+ * \brief Loader-side aggregate: spec + native id + NUMA node for
+ * one CPU as discovered by \ref cpu_loader.
+ * \internal
+ */
 struct cpu_info
 {
     cpu_spec spec;
@@ -84,10 +138,30 @@ struct cpu_info
     }
 };
 
+/*!
+ * \brief Vector of \ref cpu_info populated by \ref cpu_loader.
+ * \internal
+ */
 typedef std::vector< cpu_info > cpu_loader_vector_type;
 
+/*!
+ * \brief CPU enumeration functor.
+ * \internal
+ *
+ * Walks \c /sys via \ref sysfs_reader to enumerate processing
+ * units, then assigns dense (socket, core, processing_unit)
+ * coordinates so the kernel-side topology numbers don't leak into
+ * \ref cpuaff::cpu_spec.
+ */
 struct cpu_loader
 {
+    /*!
+     * \brief Enumerate the system's CPUs into \p v.
+     *
+     * \param v destination vector; cleared on entry.
+     * \return \c true if at least one CPU was discovered, \c false
+     *         otherwise.
+     */
     inline bool operator()(cpu_loader_vector_type &v)
     {
         v.clear();
@@ -135,10 +209,18 @@ struct cpu_loader
     }
 };
 
-// Determine a cpu count to size dynamic cpu_set_t allocations.
-// _SC_NPROCESSORS_CONF is the kernel's count of *configured* (not
-// online) CPUs and matches what sched_*affinity needs to address.
-// CPU_SETSIZE (1024 on glibc) is used as a defensive lower bound.
+/*!
+ * \brief Decide how large to size a dynamic \c cpu_set_t.
+ * \internal
+ *
+ * \c _SC_NPROCESSORS_CONF is the kernel's count of *configured*
+ * (not online) CPUs and matches what \c sched_*affinity needs to
+ * address. \c CPU_SETSIZE (1024 on glibc) is used as a defensive
+ * lower bound so the mask always covers at least the static
+ * cpu_set_t size.
+ *
+ * \return CPU count suitable for \c CPU_ALLOC / \c CPU_ALLOC_SIZE.
+ */
 inline long detect_ncpus_for_affinity()
 {
     long n = sysconf(_SC_NPROCESSORS_CONF);
@@ -146,18 +228,42 @@ inline long detect_ncpus_for_affinity()
     return n;
 }
 
+/*!
+ * \brief Affinity reader functor.
+ * \internal
+ *
+ * Wraps \c sched_getaffinity / \c pthread_getaffinity_np. Exposes
+ * a legacy bool-returning \c operator() (preserved for v1.x
+ * source-compat) and a modern \c query() pair returning
+ * \c std::error_code. The error-returning form is what
+ * \ref cpuaff::impl::basic_affinity_manager 's \c try_* API uses.
+ */
 struct get_affinity
 {
-    // Legacy bool API (calling thread). Preserved verbatim from
-    // alpha.3 for source-compat with v1.x consumers; new code should
-    // prefer query() below.
+    /*!
+     * \brief Legacy bool API for the calling thread.
+     *
+     * \warning Preserved verbatim from alpha.3 for source-compat
+     * with v1.x consumers; new code should prefer \ref query().
+     *
+     * \param cpus destination set, populated on success.
+     * \return \c true on success, \c false on any failure.
+     */
     inline bool operator()(std::set< cpu_identifier_wrapper > &cpus) const
     {
         return !query(cpus);
     }
 
-    // New error-returning API. cpus is populated on success and left
-    // unchanged on failure. Returns std::error_code{} on success.
+    /*!
+     * \brief Read the calling thread's affinity into \p cpus.
+     *
+     * \param cpus destination set; populated on success and left
+     *        unchanged on failure.
+     * \return default-constructed \c std::error_code on success;
+     *         a cpuaff-tagged code on failure (e.g.
+     *         \ref cpuaff::affinity_errc::out_of_memory if
+     *         \c CPU_ALLOC fails).
+     */
     inline std::error_code query(
         std::set< cpu_identifier_wrapper > &cpus) const noexcept
     {
@@ -190,8 +296,19 @@ struct get_affinity
         return ec;
     }
 
-    // Same as query() but for the given pthread_t (uses
-    // pthread_getaffinity_np instead of sched_getaffinity).
+    /*!
+     * \brief Read the affinity of the given pthread into \p cpus.
+     *
+     * Uses \c pthread_getaffinity_np instead of
+     * \c sched_getaffinity so the caller can target a specific
+     * pthread without needing its kernel TID.
+     *
+     * \param t target pthread.
+     * \param cpus destination set; populated on success and left
+     *        unchanged on failure.
+     * \return default-constructed \c std::error_code on success;
+     *         a cpuaff-tagged code on failure.
+     */
     inline std::error_code query(
         pthread_t t,
         std::set< cpu_identifier_wrapper > &cpus) const noexcept
@@ -227,18 +344,37 @@ struct get_affinity
     }
 };
 
+/*!
+ * \brief Affinity writer functor.
+ * \internal
+ *
+ * Wraps \c sched_setaffinity / \c pthread_setaffinity_np. Exposes
+ * the same legacy / modern split as \ref get_affinity.
+ */
 struct set_affinity
 {
-    // Legacy bool API (calling thread). Preserved verbatim from
-    // alpha.3 for source-compat with v1.x consumers; new code should
-    // prefer apply() below.
+    /*!
+     * \brief Legacy bool API for the calling thread.
+     *
+     * \warning Preserved verbatim from alpha.3 for source-compat
+     * with v1.x consumers; new code should prefer \ref apply().
+     *
+     * \param cpus mask to apply.
+     * \return \c true on success, \c false on any failure.
+     */
     inline bool operator()(
         const std::set< cpu_identifier_wrapper > &cpus) const
     {
         return !apply(cpus);
     }
 
-    // New error-returning API. Returns std::error_code{} on success.
+    /*!
+     * \brief Apply \p cpus as the calling thread's affinity.
+     *
+     * \param cpus mask to apply.
+     * \return default-constructed \c std::error_code on success;
+     *         a cpuaff-tagged code on failure.
+     */
     inline std::error_code apply(
         const std::set< cpu_identifier_wrapper > &cpus) const noexcept
     {
@@ -256,8 +392,18 @@ struct set_affinity
         return ec;
     }
 
-    // Same as apply() but for the given pthread_t (uses
-    // pthread_setaffinity_np instead of sched_setaffinity).
+    /*!
+     * \brief Apply \p cpus as the affinity of the given pthread.
+     *
+     * Uses \c pthread_setaffinity_np instead of
+     * \c sched_setaffinity so the caller can target a specific
+     * pthread without needing its kernel TID.
+     *
+     * \param t target pthread.
+     * \param cpus mask to apply.
+     * \return default-constructed \c std::error_code on success;
+     *         a cpuaff-tagged code on failure.
+     */
     inline std::error_code apply(
         pthread_t t,
         const std::set< cpu_identifier_wrapper > &cpus) const noexcept
@@ -278,11 +424,24 @@ struct set_affinity
     }
 
    private:
-    // Allocate a dynamic cpu_set_t sized to fit every cpu id in `cpus`,
-    // populated and ready to hand to sched_/pthread_setaffinity. On
-    // success returns ec{} and assigns `mask` and `mask_size`; caller
-    // owns the CPU_FREE. On failure returns the error and `mask`
-    // is left nullptr.
+    /*!
+     * \brief Allocate and populate a dynamic \c cpu_set_t covering
+     * every CPU id in \p cpus.
+     * \internal
+     *
+     * The returned mask is sized to fit the highest id in
+     * \p cpus (or \c _SC_NPROCESSORS_CONF, whichever is larger) and
+     * populated, ready to hand to \c sched_setaffinity /
+     * \c pthread_setaffinity_np. The caller owns the \c CPU_FREE.
+     *
+     * \param cpus CPU ids to set in the mask.
+     * \param mask out-parameter receiving the allocated mask
+     *        pointer (left \c nullptr on failure).
+     * \param mask_size out-parameter receiving the mask byte size.
+     * \return default-constructed \c std::error_code on success;
+     *         \ref cpuaff::affinity_errc::out_of_memory on alloc
+     *         failure.
+     */
     static inline std::error_code build_mask(
         const std::set< cpu_identifier_wrapper > &cpus,
         cpu_set_t *&mask,
@@ -312,6 +471,22 @@ struct set_affinity
     }
 };
 
+/*!
+ * \brief Linux backend trait pack consumed by
+ * \ref cpuaff::basic_traits.
+ * \internal
+ *
+ * Aggregates the loader / wrapper / get_affinity / set_affinity
+ * types so they can be plugged into the \c basic_* class templates
+ * via \ref cpuaff::traits.
+ *
+ * \note \c has_identity_native_mapping is \c true on Linux: the
+ * native CPU identifier is the kernel's CPU id, which is exactly
+ * what cpuaff already exposes via \ref cpu_identifier_type, so
+ * \ref cpuaff::impl::basic_native_cpu_mapper can build an identity
+ * map without round-tripping through \c sched_setaffinity for
+ * every CPU.
+ */
 struct traits
 {
     typedef linux_impl::cpu_identifier_type cpu_identifier_type;
@@ -321,10 +496,6 @@ struct traits
     typedef get_affinity get_affinity_type;
     typedef set_affinity set_affinity_type;
 
-    // On Linux the native cpu identifier is the kernel's CPU id, which
-    // is exactly what cpuaff already exposes via cpu_identifier_type —
-    // basic_native_cpu_mapper can therefore build an identity map
-    // without round-tripping through sched_setaffinity for every cpu.
     static constexpr bool has_identity_native_mapping = true;
 };
 

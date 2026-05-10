@@ -28,6 +28,21 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file cpuaff.hpp
+ * \brief Umbrella header — single include surface for cpuaff.
+ *
+ * Pulls in \ref config.hpp (Linux-only platform check + the
+ * \ref cpuaff::traits assembly), the \ref cpuaff::expected /
+ * \ref cpuaff::affinity_errc diagnostic surface, \ref cpu_spec, and
+ * the user-facing \c basic_* class templates from \c impl/, then
+ * binds them against \ref cpuaff::traits to expose the public type
+ * names (\ref cpuaff::affinity_manager, \ref cpuaff::cpu, etc.).
+ *
+ * Application code should include this header rather than the
+ * individual \c impl/ headers so the trait-binding stays consistent.
+ */
+
 #pragma once
 
 #include "config.hpp"
@@ -43,60 +58,86 @@
 #include "impl/basic_round_robin_allocator.hpp"
 
 /*!
- * Namespace for all cpuaff functionality
+ * \brief Namespace for all cpuaff functionality.
  */
 namespace cpuaff
 {
 /*!
- * affinity_stack is used to keep track of affinities as you get and set
- * them.  It is basically a wrapper for an affinity_manager that gives you the
- * ability to keep track of what affinities have been and reset them later.
+ * \brief RAII-friendly affinity save/restore stack.
+ *
+ * Wraps an \ref affinity_manager and records affinities as they are
+ * read so they can be restored later (push / pop semantics). Useful
+ * for short-lived affinity changes that need to leave the thread's
+ * original affinity intact.
+ *
+ * \see impl::basic_affinity_stack
  */
 typedef impl::basic_affinity_stack< traits > affinity_stack;
 
 /*!
- * cpu is a representation of a cpu on the system.  It contains all the
- * data needed to get and set thread affinity as well data specifying the
- * hardware layout of the cpu.
+ * \brief Representation of a single CPU on the system.
+ *
+ * Carries everything needed to address the CPU for affinity calls
+ * (the kernel-side identifier) along with topology metadata
+ * (socket / core / processing_unit / numa node) so callers can make
+ * structure-aware pinning decisions.
+ *
+ * \see impl::basic_cpu
  */
 typedef impl::basic_cpu< traits > cpu;
 
 /*!
- * affinity_manager is a collection of all the valid cpus.  It provides
- * interfaces to get and set cpu affinity as well as ways to classify cpus
- * on the system so that intelligent choices can be made about what affinity a
- * thread should have.
+ * \brief Top-level entry point for the cpuaff API.
+ *
+ * Enumerates the system's CPUs at construction time and exposes
+ * get/set affinity, lookup-by-spec, and classification helpers.
+ * Both the legacy bool-returning API and the modern
+ * \c try_*-prefixed \ref expected -returning API live here.
+ *
+ * \see impl::basic_affinity_manager
  */
 typedef impl::basic_affinity_manager< traits > affinity_manager;
 
 /*!
- * native_cpu_mapper is a utility class that maps native cpu
- * representations to cpus from a basic_cpu_manager.  It may not be available
- * for every platform.
+ * \brief Bridge between native (kernel) CPU identifiers and cpuaff
+ * \ref cpu objects.
+ *
+ * On Linux the native identifier is the kernel CPU id and an
+ * identity mapping is used; the type is preserved as a public
+ * surface for source-compat with the v1.x hwloc-backed builds.
+ *
+ * \see impl::basic_native_cpu_mapper
  */
 typedef impl::basic_native_cpu_mapper< traits > native_cpu_mapper;
 
 /*!
- * native_cpu_wrapper is a wrapper for the native representation of cpus.
- * It is comparable with < so that it can be used as a key in maps.
+ * \brief Comparable wrapper around the platform's native CPU
+ * identifier.
+ *
+ * Comparable with \c < so it can be used as a key in associative
+ * containers.
  */
 typedef traits::native_cpu_wrapper_type native_cpu_wrapper;
 
 /*!
- * A set that can hold unique cpus.
+ * \brief Set holding unique \ref cpu values.
+ *
+ * \see impl::basic_cpu_set
  */
 typedef impl::basic_cpu_set< traits > cpu_set;
 
 /*!
- *  a set that can hold unique cpu_specs
+ * \brief Set holding unique \ref cpu_spec values.
  */
-
 typedef std::set< cpu_spec > cpu_spec_set;
 
 /*!
- * round_robin_allocator is a utility class that takes a set of cpus
- * and returns them as requested in a round-robin fashion.  It organizes the
- * cpus such that it returns consecutive cpus from different cores if it can.
+ * \brief Round-robin allocator over a set of CPUs.
+ *
+ * Hands out CPUs one at a time, ordered so consecutive allocations
+ * land on different cores where the topology allows.
+ *
+ * \see impl::basic_round_robin_allocator
  */
 typedef impl::basic_round_robin_allocator< traits > round_robin_allocator;
 }  // namespace cpuaff

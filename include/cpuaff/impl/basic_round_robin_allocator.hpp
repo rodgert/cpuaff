@@ -28,6 +28,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file impl/basic_round_robin_allocator.hpp
+ * \brief Round-robin cpu allocator that prefers spreading consecutive
+ * allocations across distinct cores.
+ *
+ * \see cpuaff::impl::basic_round_robin_allocator
+ */
+
 #pragma once
 
 #include "../config.hpp"
@@ -44,9 +52,18 @@ namespace cpuaff
 namespace impl
 {
 /*!
+ * \brief Round-robin cpu allocator.
+ *
  * basic_round_robin_allocator is a utility class that takes a set of cpus
  * and returns them as requested in a round-robin fashion.  It organizes the
  * cpus such that it returns consecutive cpus from different cores if it can.
+ *
+ * The legacy \c allocate() surface is \c [[deprecated]]; the
+ * Phase 4 \c try_allocate() surface returns
+ * \c cpuaff::expected<T,std::error_code> and surfaces
+ * \ref cpuaff::affinity_errc::allocator_empty for the
+ * empty-allocator case (which the legacy single-cpu \c allocate()
+ * was willing to UB on).
  */
 template < typename TRAITS >
 class basic_round_robin_allocator
@@ -57,9 +74,9 @@ class basic_round_robin_allocator
 
    public:
     /*!
-     * Constructs a basic_round_robin_allocator with the given set of cpus.
+     * \brief Constructs a basic_round_robin_allocator with the given set of cpus.
      *
-     * \param cpus the set of cpus that this allocator should iterate over
+     * \param cpus the set of cpus that this allocator should iterate over.
      */
     inline basic_round_robin_allocator(const cpu_set_type &cpus)
     {
@@ -67,13 +84,16 @@ class basic_round_robin_allocator
     }
 
     /*!
-     * Get the next cpu in the round-robin.
+     * \brief Get the next cpu in the round-robin.
      *
-     * \return the next cpu in the round robin
+     * \return the next cpu in the round robin.
      *
-     * \deprecated Calls front() / pop() on an internal queue with no
-     * empty-check; calling on an empty allocator is undefined
-     * behaviour. Prefer try_allocate().
+     * \warning Calls front() / pop() on an internal queue with no
+     *          empty-check; calling on an empty allocator is
+     *          undefined behaviour.
+     * \deprecated Prefer try_allocate() — returns cpuaff::expected
+     *             and surfaces \c allocator_empty rather than
+     *             UB-ing on an empty allocator.
      */
     [[deprecated("use try_allocate() — returns cpuaff::expected and "
                  "doesn't UB on an empty allocator")]]
@@ -86,9 +106,16 @@ class basic_round_robin_allocator
     }
 
     /*!
-     * Get the next count cpus in the round-robin.
+     * \brief Get the next \p count cpus in the round-robin.
      *
-     * \deprecated Prefer try_allocate(cpu_set_type&, uint32_t).
+     * \param cpus [out] the set of cpus drawn from the allocator.
+     * \param count [in] the number of cpus to draw; if larger than
+     *              the allocator's distinct cpu count the result
+     *              caps at the distinct cpu count.
+     * \return true if any cpus were drawn; false if the allocator
+     *         was empty.
+     *
+     * \deprecated Prefer try_allocate(uint32_t).
      */
     [[deprecated("use try_allocate()")]]
     inline bool allocate(cpu_set_type &cpus, uint32_t count)
@@ -107,11 +134,21 @@ class basic_round_robin_allocator
         return true;
     }
 
+    /*!
+     * \brief Number of cpus in the round-robin queue.
+     *
+     * \return the count of cpus the allocator can hand out per cycle.
+     */
     [[nodiscard]] inline std::size_t size() const noexcept
     {
         return cpu_queue_.size();
     }
 
+    /*!
+     * \brief True iff the allocator has no cpus to hand out.
+     *
+     * \return true if the allocator is empty; false otherwise.
+     */
     [[nodiscard]] inline bool empty() const noexcept
     {
         return cpu_queue_.empty();
@@ -126,8 +163,13 @@ class basic_round_robin_allocator
     // ---------------------------------------------------------------
 
     /*!
-     * Get the next cpu in the round-robin. Returns
-     * std::errc::no_message_available if the allocator is empty.
+     * \brief Get the next cpu in the round-robin.
+     *
+     * \return the next cpu on success;
+     *         \ref cpuaff::affinity_errc::allocator_empty if the
+     *         allocator has no cpus to hand out.
+     *
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_type, std::error_code >
     try_allocate()
@@ -135,7 +177,8 @@ class basic_round_robin_allocator
         if (cpu_queue_.empty())
         {
             return cpuaff::unexpected< std::error_code >(
-                std::make_error_code(std::errc::no_message_available));
+                cpuaff::make_error_code(
+                    cpuaff::affinity_errc::allocator_empty));
         }
         cpu_type retval = cpu_queue_.front();
         cpu_queue_.pop();
@@ -144,9 +187,18 @@ class basic_round_robin_allocator
     }
 
     /*!
-     * Get up to `count` cpus in the round-robin order. Always
-     * succeeds (returning an empty result if the allocator is empty,
-     * a smaller set if count exceeds the number of distinct cpus).
+     * \brief Get up to \p count cpus in round-robin order.
+     *
+     * \param count the number of cpus to draw.
+     * \return a cpu_set_type holding up to \p count cpus; always
+     *         a value (returning an empty set if the allocator is
+     *         empty, or a smaller set if \p count exceeds the
+     *         number of distinct cpus).
+     *
+     * \note Unlike the single-cpu \c try_allocate(), this overload
+     *       never returns an error — an empty allocator yields an
+     *       empty set rather than \c allocator_empty.
+     * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_allocate(uint32_t count)

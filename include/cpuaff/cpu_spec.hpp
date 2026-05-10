@@ -28,6 +28,20 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file cpu_spec.hpp
+ * \brief Topological CPU coordinate (socket, core, processing unit).
+ *
+ * \ref cpuaff::cpu_spec is the structural address of a CPU on the
+ * system, distinct from the kernel-side native identifier carried
+ * by \ref cpuaff::cpu. It is what callers use to ask "the second
+ * hardware thread of the third core on socket 0" without having to
+ * know which kernel CPU id that resolves to on this particular
+ * machine.
+ *
+ * \see cpuaff::cpu
+ */
+
 #pragma once
 
 #include "fwd.hpp"
@@ -39,25 +53,35 @@
 namespace cpuaff
 {
 /*!
- * A class representing a cpu by its socket, core, and processing unit.  For
- * instance, the first processing unit on the first core of the first socket
- * is represented as socket = 0, core = 0, processing unit = 0.
+ * \brief Structural address of a CPU as (socket, core,
+ * processing_unit).
+ *
+ * For instance, the first processing unit on the first core of the
+ * first socket is represented as socket = 0, core = 0,
+ * processing_unit = 0. Comparable with \c < and \c == so it can be
+ * used as a key in associative containers.
+ *
+ * \see cpuaff::cpu
  */
 class cpu_spec
 {
    public:
     /*!
-     * Constructs a cpu_spec with socket = -1, core = -1, processing unit = -1.
-     * This will never be a legal CPU.
+     * \brief Default-construct an "invalid" cpu_spec
+     * (socket = -1, core = -1, processing_unit = -1).
+     *
+     * \note No real CPU has this triple, so the default value is
+     * safe as a sentinel.
      */
     inline cpu_spec() : socket_(-1), core_(-1), processing_unit_(-1) {}
 
     /*!
-     * Constructs a cpu_spec with the given socket, core, and processing unit.
+     * \brief Construct with explicit topology coordinates.
      *
-     * \param s Zero based socket
-     * \param c Zero based core
-     * \param h Zero based processing unit (hyperthread)
+     * \param s zero-based socket.
+     * \param c zero-based core within the socket.
+     * \param h zero-based processing unit (hardware thread) within
+     *        the core.
      */
     inline cpu_spec(const socket_type &s,
                     const core_type &c,
@@ -68,11 +92,14 @@ class cpu_spec
 
    public:
     /*!
-     * Parse a string into a cpu_spec
+     * \brief Parse a "socket,core,processing_unit" triplet into a
+     * cpu_spec.
      *
-     * \param rhs the string to parse
-     *
-     * \return a cpu_spec parsed from the string
+     * \param rhs the string to parse.
+     * \return the parsed cpu_spec; on malformed input the result
+     *         carries whatever the underlying \c istream extraction
+     *         was able to fill (may be the default-constructed
+     *         sentinel triple).
      */
     static inline cpu_spec parse(const std::string &rhs)
     {
@@ -83,23 +110,21 @@ class cpu_spec
     }
 
     /*!
-     * Get the zero based socket identifier for this cpu_spec.
-     *
-     * \return the zero based socket identifier
+     * \brief Read the zero-based socket identifier.
+     * \return the socket identifier.
      */
     const inline socket_type &socket() const { return socket_; }
 
     /*!
-     * Get the zero based core identifier for this cpu_spec
-     *
-     * \return the zero based core identifier
+     * \brief Read the zero-based core identifier (within the socket).
+     * \return the core identifier.
      */
     const inline core_type &core() const { return core_; }
 
     /*!
-     * Get the zero based processing unit identifier for this cpu_spec.
-     *
-     * \return the zero based processing unit identifier
+     * \brief Read the zero-based processing unit identifier (within
+     * the core).
+     * \return the processing unit identifier.
      */
     const inline processing_unit_type &processing_unit() const
     {
@@ -107,24 +132,20 @@ class cpu_spec
     }
 
     /*!
-     * Set the zero based socket identifier for this cpu_spec.
-     *
-     * \param socket the zero based socket identifier for this cpu_spec
+     * \brief Set the zero-based socket identifier.
+     * \param socket new socket identifier.
      */
     inline void socket(const socket_type &socket) { socket_ = socket; }
 
     /*!
-     * Set the zero based core identifier for this cpu_spec
-     *
-     * \param core the zero based core identifier for this cpu_spec
+     * \brief Set the zero-based core identifier.
+     * \param core new core identifier.
      */
     inline void core(const core_type &core) { core_ = core; }
 
     /*!
-     * Set the zero based processing unit identifier for this cpu_spec
-     *
-     * \param processing_unit the zero based processing unit identifier for this
-     *        cpu_spec
+     * \brief Set the zero-based processing unit identifier.
+     * \param processing_unit new processing unit identifier.
      */
     inline void processing_unit(const processing_unit_type &processing_unit)
     {
@@ -132,10 +153,14 @@ class cpu_spec
     }
 
     /*!
-     * Less than operator to allow cpu_spec to be a key in stl maps/sets
+     * \brief Lexicographic less-than over (socket, core,
+     * processing_unit).
      *
-     * \param rhs the cpu_spec to compare to
-     * \return true if this cpu_spec compares less than rhs.  false otherwise.
+     * Lets cpu_spec be a key in STL associative containers.
+     *
+     * \param rhs the cpu_spec to compare against.
+     * \return \c true if \c *this orders before \c rhs, \c false
+     *         otherwise.
      */
     inline bool operator<(const cpu_spec &rhs) const
     {
@@ -165,21 +190,29 @@ class cpu_spec
     }
 
     /*!
-     * Equality operator
+     * \brief Component-wise equality.
      *
-     * \param rhs the basic_cpu to compare to
-     * \return true if this basic_cpu has the same socket, core, and processing
-               unit as rhs, false otherwise.
+     * \param rhs the cpu_spec to compare to.
+     * \return \c true if both cpu_specs share socket, core, and
+     *         processing unit; \c false otherwise.
      */
     inline bool operator==(const cpu_spec &rhs) const
     {
         return (socket_ == rhs.socket_ && core_ == rhs.core_ &&
                 processing_unit_ == rhs.processing_unit_);
     }
+
     /*!
-     *  Stream in operator
+     * \brief Extract a comma-separated triplet
+     * "socket,core,processing_unit" from a stream into \p rhs.
      *
-     * \parse a string triplet of socket,core,processing_unit into a cpu spec
+     * The separator between fields is consumed via \c s.get() and
+     * isn't required to be specifically a comma — any single
+     * delimiter character works.
+     *
+     * \param s input stream.
+     * \param rhs cpu_spec to populate.
+     * \return reference to \p s.
      */
     friend inline std::istream &operator>>(std::istream &s, cpu_spec &rhs)
     {
@@ -191,12 +224,15 @@ class cpu_spec
 
         return s;
     }
-    /*!
-     *  Stream out operator
-     *
-     *  stream out socket,core,processing_unit
-     */
 
+    /*!
+     * \brief Insert a "socket,core,processing_unit" triplet into a
+     * stream.
+     *
+     * \param s output stream.
+     * \param rhs cpu_spec to format.
+     * \return reference to \p s.
+     */
     friend inline std::ostream &operator<<(std::ostream &s, const cpu_spec &rhs)
     {
         s << rhs.socket_ << "," << rhs.core_ << "," << rhs.processing_unit_;

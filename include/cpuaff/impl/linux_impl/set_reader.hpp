@@ -29,6 +29,18 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file set_reader.hpp
+ * \brief Linux kernel cpulist parser.
+ * \internal
+ *
+ * Parses the comma-and-dash cpulist format the kernel produces in
+ * the various \c /sys/devices/system/{cpu,node} cpulist files
+ * (e.g. \c "0-3,5,7-11") into a \c std::set of integer ids. Used by
+ * \ref cpuaff::impl::linux_impl::sysfs_reader; not part of the
+ * public API.
+ */
+
 #pragma once
 
 #include <charconv>
@@ -46,12 +58,19 @@ namespace linux_impl
 {
 namespace set_reader
 {
-/*
- * Parse a Linux kernel cpulist (RFC 1374-ish): comma-separated numbers
- * and dash-ranges, e.g. "0-3,5,7-11". Returns false if any chunk is
- * malformed; the result set is cleared on entry, so a partial parse
- * leaves it empty. Whitespace within chunks is rejected (the kernel
- * never produces it).
+/*!
+ * \brief Parse a Linux kernel cpulist into \p result.
+ * \internal
+ *
+ * Accepts comma-separated numbers and dash-ranges, e.g.
+ * \c "0-3,5,7-11". Returns \c false if any chunk is malformed;
+ * \p result is cleared on entry, so a partial parse leaves it
+ * empty. Whitespace within chunks is rejected (the kernel never
+ * produces it).
+ *
+ * \param result destination set; cleared on entry.
+ * \param input string view over the cpulist text.
+ * \return \c true on a fully-valid parse, \c false otherwise.
  */
 inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
 {
@@ -124,9 +143,18 @@ inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
     return true;
 }
 
-// Backwards-compatible overload — the previous signature took
-// `const std::string&`, and the implicit conversion to string_view
-// covers existing callers.
+/*!
+ * \brief Backwards-compatible \c std::string overload.
+ * \internal
+ *
+ * The previous signature took \c const \c std::string&; the
+ * implicit conversion to \c std::string_view covers existing
+ * callers and forwards to the primary overload.
+ *
+ * \param result destination set; cleared on entry.
+ * \param str cpulist text.
+ * \return \c true on a fully-valid parse, \c false otherwise.
+ */
 inline bool read_int_set(std::set< int32_t > &result, const std::string &str)
 {
     return read_int_set(result, std::string_view(str));

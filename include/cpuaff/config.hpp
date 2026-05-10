@@ -28,6 +28,19 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*!
+ * \file config.hpp
+ * \brief Platform check and traits assembly for cpuaff v2.
+ *
+ * cpuaff v2 is Linux-only; this header asserts that with a hard
+ * \c \#error on non-Linux toolchains and then assembles the
+ * \ref cpuaff::traits typedef out of the two trait packs in
+ * \c impl/linux_impl/linux.hpp. The \ref cpuaff::basic_traits
+ * template is parameterised on a loader and a native pack so the
+ * same machinery worked for the v1.x hwloc backend; the public
+ * cpuaff::traits binds both to the Linux pack.
+ */
+
 #pragma once
 
 #if !defined(__linux__)
@@ -40,6 +53,24 @@
 
 namespace cpuaff
 {
+/*!
+ * \brief Trait pack consumed by the \c basic_* class templates.
+ *
+ * Aggregates the loader-side types (CPU identifier, identifier
+ * wrapper, loader functor, \c get_affinity / \c set_affinity
+ * functors) and the native-side types (mapping cpuaff identifiers
+ * to a platform's native CPU representation).
+ *
+ * \note The two parameters allow loader and native sides to come
+ * from different backends — historically used to combine the
+ * Linux loader with hwloc-supplied native identifiers. The current
+ * Linux-only build binds both to \c impl::linux_impl::traits.
+ *
+ * \tparam LOADER_TRAITS trait pack supplying the CPU enumerator
+ * and the affinity get/set functors.
+ * \tparam NATIVE_TRAITS trait pack supplying the native CPU
+ * identifier types and a native-side \c get_affinity functor.
+ */
 template < typename LOADER_TRAITS, typename NATIVE_TRAITS >
 struct basic_traits
 {
@@ -57,6 +88,9 @@ struct basic_traits
     typedef typename NATIVE_TRAITS::get_affinity_type native_get_affinity_type;
 };
 
+/*!
+ * \brief Default trait pack — the Linux backend on both sides.
+ */
 typedef basic_traits< impl::linux_impl::traits, impl::linux_impl::traits >
     traits;
 }  // namespace cpuaff

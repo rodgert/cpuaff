@@ -22,6 +22,86 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
   interaction tests, `try_*` API tests, errno-propagation tests,
   GitHub Actions matrix expansion.
 
+## [2.0.0-htaa.beta.2] — 2026-05-10
+
+Phase 4 hotfix milestone. Addresses real findings from the
+adversarial review of beta.1 — a source-compat regression in
+`basic_cpu_set`, divergences between the cpuaff::expected polyfill
+and `std::expected`, the empty-stack/empty-allocator error code
+choice, and a missing pthread_t overload for `try_get_available_cpus`.
+Plus a full doxygen-source-commentary sweep across the public-API
+headers.
+
+### Fixed
+
+- `basic_cpu_set` lost comparison operators (`==`, `<=>`),
+  `swap`, `merge`, `extract`, `node_type`, `insert_return_type`,
+  `key_compare`, `value_compare`, `get_allocator`, `key_comp`,
+  `value_comp` in beta.1's `public std::set` → `private std::set`
+  refactor. The synthesised free comparison operators on
+  `std::set` worked through ADL on the public base; with private
+  inheritance they aren't visible to non-friends. Restored as
+  hidden friends that `static_cast` through to the base, plus a
+  forwarding member `swap` and ADL-found friend swap, plus
+  using-declarations for the missing type aliases and observers,
+  plus a forwarding `merge<Source>` template.
+- `cpuaff::expected` polyfill now matches `std::expected` on misuse
+  paths:
+  - `[[nodiscard]]` on the class (was missing — std::expected has it).
+  - `expected<void, E>::value()` throws `bad_expected_access<E>` on
+    missing-value (was a silent no-op).
+  - `operator*` and `operator->` are both unchecked (UB on missing
+    value) via `std::get_if` + dereference, matching std::expected.
+    Previously `operator*` threw `bad_variant_access` while
+    `operator->` returned `nullptr` — the same misuse path produced
+    different failure modes depending on accessor and toolchain.
+  - `cpuaff::bad_expected_access<E>` exception class added (alias of
+    `std::bad_expected_access` when the std path is active).
+- `detail/expected.hpp`: `#include <exception>` was inside
+  `namespace cpuaff` (it pulled the included declarations into the
+  cpuaff namespace, undefined behaviour for any standard header).
+  Moved to the top-level include block.
+- `try_pop_affinity` and `try_allocate` now return fork-specific
+  `cpuaff::affinity_errc::stack_empty` / `allocator_empty` rather
+  than `std::errc::no_message_available` (which is "the I/O channel
+  has no data" — a stretch). Internal codes (≥ 10000) stay in the
+  cpuaff::affinity_category for matching; errno-shaped values
+  (< 10000) still map to `std::generic_category` so
+  `ec == std::errc::invalid_argument` works for kernel-sourced
+  errors. Unrecognised error values now fall through to
+  `std::generic_category().message(ev)` rather than the previous
+  `"unknown cpuaff::affinity error"`.
+
+### Added
+
+- `try_get_available_cpus(pthread_t)` overload — symmetry gap from
+  beta.1; the rest of the try_* family had both calling-thread and
+  pthread_t variants.
+- `cpuaff::affinity_errc::stack_empty` (10001) and
+  `affinity_errc::allocator_empty` (10002) — fork-specific error
+  codes for the two cpuaff-internal "no data" cases.
+
+### Documentation
+
+- Full doxygen pass across the public-API headers and the
+  internal `linux_impl/` helpers. Every public class, free function,
+  and method now has `\brief` plus `\param` / `\return` /
+  `\deprecated` / `\warning` / `\since` tags as appropriate.
+  `\since v2.0.0-htaa.beta.1` marks the new Phase 4 surface;
+  `\internal` flags the linux_impl / detail headers.
+- Notable inline fixes during the sweep:
+  `sysfs_reader.hpp` and `set_reader.hpp` file-level docstrings
+  originally referenced `"/sys/devices/system/{node,cpu}/*"` whose
+  literal `/*` was a nested-comment opener inside the `/*! ... */`
+  block (caught by clang's -Wcomment); rephrased.
+  `cpu_spec.hpp` stream operators had broken `\parse` tags;
+  fleshed out properly.
+
+Verified
+* cmake build / ctest clean (no warnings, no errors).
+* All 149 assertions across 4 test cases pass.
+* tools/leakcheck.sh clean (369 files scanned).
+
 ## [2.0.0-htaa.beta.1] — 2026-05-09
 
 Phase 4: C++20 API modernization. Adds the `try_*` family of
@@ -263,7 +343,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.2...v2
+[2.0.0-htaa.beta.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2.0.0-htaa.beta.2
 [2.0.0-htaa.beta.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2.0.0-htaa.beta.1
 [2.0.0-htaa.alpha.3]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2.0.0-htaa.alpha.3
 [2.0.0-htaa.alpha.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.1...v2.0.0-htaa.alpha.2
