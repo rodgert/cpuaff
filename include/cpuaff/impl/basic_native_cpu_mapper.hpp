@@ -35,11 +35,33 @@
 #include "basic_cpu.hpp"
 #include "basic_cpu_set.hpp"
 #include <map>
+#include <type_traits>
 
 namespace cpuaff
 {
 namespace impl
 {
+namespace detail
+{
+// Trait detector: true iff TRAITS exposes a static constexpr bool
+// `has_identity_native_mapping` and it evaluates to true. Backends
+// that set this flag are asserting that their native cpu id type is
+// the same as the cpu identifier type, so the mapper can be built
+// without sched_setaffinity round-trips.
+template < typename T, typename = void >
+struct has_identity_native_mapping_v : std::false_type
+{
+};
+
+template < typename T >
+struct has_identity_native_mapping_v<
+    T,
+    std::void_t< decltype(T::has_identity_native_mapping) > >
+    : std::bool_constant< T::has_identity_native_mapping >
+{
+};
+}  // namespace detail
+
 /*!
  * basic_native_cpu_mapper is a utility class that maps native cpu
  * representations to cpus from a basic_cpu_manager.  It may not be available
@@ -69,20 +91,47 @@ class basic_native_cpu_mapper
 
     /*!
      * Initializes a basic_native_cpu_mapper from the given affinity_manager.
-     * This function sets the affinity of the calling thread consecutively to
-     * every cpu on the system.  If this isn't possible, the initialization will
-     * fail, or worse, hang.
+     *
+     * If TRAITS declares `static constexpr bool has_identity_native_mapping
+     * = true` (the linux_impl backend does), the mapper is built directly
+     * from the affinity_manager's enumerated cpus — no sched_setaffinity
+     * round-trip required. This is the path used in production: the old
+     * walk-by-pinning behaviour is a footgun on a live trading box (it
+     * temporarily migrates the calling thread to every CPU in turn) and is
+     * preserved only as the fallback for backends that lack the trait.
+     *
+     * For backends without the trait, falls back to the original walk: pin
+     * the calling thread to each cpu in turn, query the native affinity,
+     * and record the (native, cpu) pair. Restores the original affinity at
+     * the end. May fail or hang if pinning isn't possible.
      *
      * \param affinity_manager the affinity_manager to load configured cpus from
      * \return true if initialization succeeds, false otherwise
      */
     inline bool initialize(const affinity_manager_type &affinity_manager)
     {
-        bool retval = true;
         cpu_set_type cpus;
+        if (!affinity_manager.get_cpus(cpus)) return false;
 
-        if (affinity_manager.get_cpus(cpus))
+        if constexpr (detail::has_identity_native_mapping_v< TRAITS >::value)
         {
+            static_assert(
+                std::is_same< native_cpu_type, cpu_identifier_type >::value,
+                "TRAITS::has_identity_native_mapping requires "
+                "native_cpu_type == cpu_identifier_type");
+
+            for (const auto &cpu : cpus)
+            {
+                native_cpu_wrapper_type native(
+                    static_cast< native_cpu_type >(cpu.id().get()));
+                cpu_by_native_[native] = cpu;
+                native_by_cpu_[cpu] = native;
+            }
+            return true;
+        }
+        else
+        {
+            bool retval = true;
             cpu_set_type orig;
 
             if (affinity_manager.get_affinity(orig))
@@ -122,13 +171,9 @@ class basic_native_cpu_mapper
             {
                 retval = false;
             }
-        }
-        else
-        {
-            retval = false;
-        }
 
-        return retval;
+            return retval;
+        }
     }
 
     /*!

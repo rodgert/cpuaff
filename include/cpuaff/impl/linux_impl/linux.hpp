@@ -132,27 +132,40 @@ struct cpu_loader
     }
 };
 
+// Determine a cpu count to size dynamic cpu_set_t allocations.
+// _SC_NPROCESSORS_CONF is the kernel's count of *configured* (not
+// online) CPUs and matches what sched_*affinity needs to address.
+// CPU_SETSIZE (1024 on glibc) is used as a defensive lower bound.
+inline long detect_ncpus_for_affinity()
+{
+    long n = sysconf(_SC_NPROCESSORS_CONF);
+    if (n < CPU_SETSIZE) n = CPU_SETSIZE;
+    return n;
+}
+
 struct get_affinity
 {
     inline bool operator()(std::set< cpu_identifier_wrapper > &cpus)
     {
-        cpu_set_t cpu_set;
-        if (0 == sched_getaffinity(0, sizeof(cpu_set_t), &cpu_set))
+        const long ncpus = detect_ncpus_for_affinity();
+        const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
+        cpu_set_t *mask = CPU_ALLOC(ncpus);
+        if (mask == nullptr) return false;
+
+        const bool ok = (sched_getaffinity(0, mask_size, mask) == 0);
+        if (ok)
         {
-            for (cpu_identifier_type i = 0; i < CPU_SETSIZE; ++i)
+            for (long i = 0; i < ncpus; ++i)
             {
-                if (CPU_ISSET(i, &cpu_set))
+                if (CPU_ISSET_S(i, mask_size, mask))
                 {
-                    cpus.insert(cpu_identifier_wrapper(i));
+                    cpus.insert(cpu_identifier_wrapper(
+                        static_cast< cpu_identifier_type >(i)));
                 }
             }
-
-            return true;
         }
-        else
-        {
-            return false;
-        }
+        CPU_FREE(mask);
+        return ok;
     }
 };
 
@@ -160,18 +173,29 @@ struct set_affinity
 {
     inline bool operator()(const std::set< cpu_identifier_wrapper > &cpus)
     {
-        cpu_set_t cpu_set;
-        CPU_ZERO(&cpu_set);
-
-        std::set< cpu_identifier_wrapper >::iterator i = cpus.begin();
-        std::set< cpu_identifier_wrapper >::iterator iend = cpus.end();
-
-        for (; i != iend; ++i)
+        long ncpus = detect_ncpus_for_affinity();
+        // The cpu set may legitimately reference CPU ids beyond
+        // _SC_NPROCESSORS_CONF (e.g. hot-plug setups); grow the
+        // allocation to fit the largest id we're being asked to set.
+        for (const auto &w : cpus)
         {
-            CPU_SET(i->get(), &cpu_set);
+            const long id = static_cast< long >(w.get());
+            if (id >= ncpus) ncpus = id + 1;
         }
 
-        return (0 == sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set));
+        const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
+        cpu_set_t *mask = CPU_ALLOC(ncpus);
+        if (mask == nullptr) return false;
+
+        CPU_ZERO_S(mask_size, mask);
+        for (const auto &w : cpus)
+        {
+            CPU_SET_S(static_cast< long >(w.get()), mask_size, mask);
+        }
+
+        const bool ok = (sched_setaffinity(0, mask_size, mask) == 0);
+        CPU_FREE(mask);
+        return ok;
     }
 };
 
@@ -183,6 +207,12 @@ struct traits
     typedef linux_impl::cpu_loader_vector_type cpu_loader_vector_type;
     typedef get_affinity get_affinity_type;
     typedef set_affinity set_affinity_type;
+
+    // On Linux the native cpu identifier is the kernel's CPU id, which
+    // is exactly what cpuaff already exposes via cpu_identifier_type —
+    // basic_native_cpu_mapper can therefore build an identity map
+    // without round-tripping through sched_setaffinity for every cpu.
+    static constexpr bool has_identity_native_mapping = true;
 };
 
 }  // namespace linux_impl

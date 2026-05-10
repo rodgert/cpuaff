@@ -1,4 +1,5 @@
 /* Copyright (c) 2015-2017, Daniel C. Dillon
+ * Modifications copyright (c) 2026 Thomas Rodgers
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,12 +31,12 @@
 
 #pragma once
 
-#include <cstdlib>
-#include <cstring>
+#include <charconv>
 #include <set>
 #include <stdint.h>
 #include <string>
-#include <vector>
+#include <string_view>
+#include <system_error>
 
 namespace cpuaff
 {
@@ -45,53 +46,90 @@ namespace linux_impl
 {
 namespace set_reader
 {
-inline bool read_int_set(std::set< int32_t > &set, const std::string &str)
+/*
+ * Parse a Linux kernel cpulist (RFC 1374-ish): comma-separated numbers
+ * and dash-ranges, e.g. "0-3,5,7-11". Returns false if any chunk is
+ * malformed; the result set is cleared on entry, so a partial parse
+ * leaves it empty. Whitespace within chunks is rejected (the kernel
+ * never produces it).
+ */
+inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
 {
-    set.clear();
+    result.clear();
 
-    std::vector< std::string > elem;
-
-    char buf[2048];
-    strcpy(buf, str.c_str());
-
-    char *tok = strtok(buf, ",");
-
-    while (tok)
+    while (!input.empty())
     {
-        elem.push_back(tok);
-        tok = strtok(NULL, ",");
-    }
+        auto comma = input.find(',');
+        std::string_view chunk =
+            (comma == std::string_view::npos) ? input : input.substr(0, comma);
 
-    std::vector< std::string >::iterator i = elem.begin();
-    std::vector< std::string >::iterator iend = elem.end();
-
-    for (; i != iend; ++i)
-    {
-        if (i->find("-") == std::string::npos)
+        // Trim only trailing newline / whitespace at the very end of the
+        // input — sysfs cpulist files end with a '\n' that getline strips,
+        // but be defensive.
+        while (!chunk.empty()
+               && (chunk.back() == '\n' || chunk.back() == '\r'
+                   || chunk.back() == ' ' || chunk.back() == '\t'))
         {
-            set.insert(atoi(i->c_str()));
+            chunk.remove_suffix(1);
+        }
+
+        if (chunk.empty())
+        {
+            // Tolerate an empty trailing chunk (e.g. trailing comma).
+        }
+        else if (auto dash = chunk.find('-'); dash == std::string_view::npos)
+        {
+            int32_t value = 0;
+            const char *first = chunk.data();
+            const char *last = first + chunk.size();
+            auto [p, ec] = std::from_chars(first, last, value);
+            if (ec != std::errc{} || p != last)
+            {
+                result.clear();
+                return false;
+            }
+            result.insert(value);
         }
         else
         {
-            char buf2[32];
-            strcpy(buf2, i->c_str());
+            std::string_view lhs = chunk.substr(0, dash);
+            std::string_view rhs = chunk.substr(dash + 1);
 
-            tok = strtok(buf2, "-");
+            int32_t begin = 0;
+            int32_t end = 0;
 
-            int32_t begin = atoi(tok);
+            auto [p1, ec1] =
+                std::from_chars(lhs.data(), lhs.data() + lhs.size(), begin);
+            auto [p2, ec2] =
+                std::from_chars(rhs.data(), rhs.data() + rhs.size(), end);
 
-            tok = strtok(NULL, "-");
-
-            int32_t end = atoi(tok);
+            if (ec1 != std::errc{} || ec2 != std::errc{}
+                || p1 != lhs.data() + lhs.size()
+                || p2 != rhs.data() + rhs.size() || begin > end)
+            {
+                result.clear();
+                return false;
+            }
 
             for (int32_t j = begin; j <= end; ++j)
             {
-                set.insert(j);
+                result.insert(j);
             }
         }
+
+        if (comma == std::string_view::npos) break;
+        input.remove_prefix(comma + 1);
     }
 
     return true;
+}
+
+// Backwards-compatible overload — the previous signature took
+// `const std::string&`, and the implicit conversion to string_view
+// covers existing callers.
+inline bool read_int_set(std::set< int32_t > &result, const std::string &str)
+{
+    return read_int_set(result, std::string_view(str));
 }
 }  // namespace set_reader
 }  // namespace linux_impl

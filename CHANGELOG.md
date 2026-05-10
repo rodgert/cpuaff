@@ -20,10 +20,51 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 - C++20 modernization: `std::expected`-based error reporting,
   `pthread_setaffinity_np` overloads for arbitrary-thread pinning,
-  cgroup/cpuset awareness, dynamic `cpu_set_t` via `CPU_ALLOC` for
-  hosts with more than 1024 CPUs.
-- Linux backend correctness fixes (sysfs parsing, `native_cpu_mapper`
-  short-circuit, sysfs-fallback hardening).
+  cgroup/cpuset awareness.
+
+## [2.0.0-htaa.alpha.3] — 2026-05-09
+
+Phase 3: Linux backend correctness fixes. No public API change.
+
+### Fixed
+
+- `linux_impl/set_reader.hpp`: cpulist parsing rewritten using
+  `std::string_view` + `std::from_chars`. The previous implementation
+  copied the input into fixed `char buf[2048]` / `char buf[32]` stack
+  buffers via `strcpy` (overflow risk on big or hot-plugged systems),
+  tokenised with the non-reentrant `strtok`, and converted with
+  `atoi` (silent 0 on garbage → phantom CPU 0 in the result set). The
+  new implementation is bounds-checked and returns false (with empty
+  result) on malformed input.
+- `linux_impl/linux.hpp` `get_affinity` / `set_affinity`: switched
+  from stack-allocated `cpu_set_t` (`CPU_SETSIZE = 1024` bits) to
+  dynamic `CPU_ALLOC` / `CPU_ALLOC_SIZE` sized via
+  `sysconf(_SC_NPROCESSORS_CONF)`. `set_affinity` further grows the
+  allocation if the input set references CPU ids beyond the
+  configured count. Hosts with more than 1024 CPUs are now correctly
+  handled; previously `sched_*affinity` returned `EINVAL` and the
+  call silently dropped.
+- `linux_impl/sysfs_reader.hpp` last-resort fallback: directory entries
+  are now strictly matched against `cpu<digits>` via `std::from_chars`
+  with a full-consumption check. Previously any name starting with
+  `"cpu"` (e.g. `cpufreq`, `cpuidle`) was accepted, with `atoi("freq")`
+  silently returning 0 and producing a phantom CPU 0. The `DIR*` is
+  now closed on every exit path (it was previously leaked).
+- `basic_native_cpu_mapper::initialize()`: identity-map short-circuit.
+  When `TRAITS::has_identity_native_mapping` is true (now the case
+  for `linux_impl::traits`), the mapper is built directly from the
+  affinity_manager's enumerated cpus rather than by walking every
+  CPU and calling `sched_setaffinity` on each one. The walk path was
+  documented as possibly hanging on the wrong host; it is preserved
+  only as the fallback for non-Linux backends. Production
+  initialization is now O(N) map insertions with no thread-affinity
+  disturbance.
+
+### Changed
+
+- `linux_impl::traits` gained
+  `static constexpr bool has_identity_native_mapping = true;` to
+  enable the mapper short-circuit above.
 
 ## [2.0.0-htaa.alpha.2] — 2026-05-09
 
@@ -134,7 +175,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2
+[2.0.0-htaa.alpha.3]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2.0.0-htaa.alpha.3
 [2.0.0-htaa.alpha.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.1...v2.0.0-htaa.alpha.2
 [2.0.0-htaa.alpha.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.0...v2.0.0-htaa.alpha.1
 [2.0.0-htaa.alpha.0]: https://github.com/rodgert/cpuaff/compare/v1.0.6-htaa.1...v2.0.0-htaa.alpha.0

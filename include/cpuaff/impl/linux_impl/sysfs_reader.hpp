@@ -31,12 +31,16 @@
 #pragma once
 #include "../../cpu_spec.hpp"
 #include "set_reader.hpp"
+#include <charconv>
 #include <dirent.h>
 #include <fstream>
-#include <iostream>
 #include <set>
 #include <sstream>
 #include <stdint.h>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
 
 namespace cpuaff
 {
@@ -250,21 +254,38 @@ inline bool load_cpus(std::vector< pu > &pus)
         }
         else
         {
-            DIR *dir;
-            struct dirent *ent;
-
-            if ((dir = opendir("/sys/devices/system/cpu")) != NULL)
+            // Last-resort fallback: enumerate /sys/devices/system/cpu/cpuN
+            // entries directly. Strictly require "cpu<digits>" so we
+            // don't pick up cpufreq, cpuidle, or other sibling entries
+            // that the previous implementation accepted as phantom
+            // CPU 0 via atoi("freq") == 0. Also closes the DIR* on
+            // every exit path.
+            DIR *dir = opendir("/sys/devices/system/cpu");
+            if (dir != nullptr)
             {
-                while ((ent = readdir(dir)) != NULL)
+                struct dirent *ent;
+                while ((ent = readdir(dir)) != nullptr)
                 {
-                    std::string file = ent->d_name;
-
-                    if (file.substr(0, 3) == "cpu")
+                    std::string_view name(ent->d_name);
+                    if (name.size() < 4
+                        || name.substr(0, 3) != std::string_view("cpu"))
                     {
-                        int32_t cpu = atoi(file.substr(3).c_str());
-                        read_cpu(pus, cpu);
+                        continue;
                     }
+                    std::string_view suffix = name.substr(3);
+
+                    int32_t cpu = -1;
+                    auto [p, ec] = std::from_chars(
+                        suffix.data(), suffix.data() + suffix.size(), cpu);
+                    if (ec != std::errc{}
+                        || p != suffix.data() + suffix.size() || cpu < 0)
+                    {
+                        continue;
+                    }
+
+                    read_cpu(pus, cpu);
                 }
+                closedir(dir);
             }
         }
     }
