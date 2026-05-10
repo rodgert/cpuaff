@@ -7,15 +7,27 @@ a production dependency for HFT systems and stays Linux-only.
 ## Building
 
 cpuaff is a header-only C++ library — to consume it, point your compiler
-at `include/`. The autotools-driven build below is for running the
-bundled tests and examples and is being phased out in favour of CMake
-during the v2 cycle (see `CHANGELOG.md`).
+at `include/`, or pull it into a CMake project via:
+
+```cmake
+find_package(cpuaff 2.0 CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE cpuaff::cpuaff)
+```
+
+To build the bundled examples and tests locally:
 
 ```sh
-./bootstrap.sh
-./configure
-make check
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
+
+Optional knobs:
+- `-DCPUAFF_BUILD_EXAMPLES=OFF` skip examples
+- `-DCPUAFF_BUILD_TESTS=OFF`    skip tests
+
+Examples and tests build only when this is the top-level project, so
+`FetchContent` consumers don't pull them in by default.
 
 ## Branch model
 

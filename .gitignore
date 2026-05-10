@@ -1,5 +1,3 @@
-packaging/deb.*
-
 # Secrets — never commit credentials, certs, keys, or env files.
 *.key
 *.pem
@@ -22,42 +20,9 @@ secrets/
 .vscode/
 .DS_Store
 
-# Local build / IDE artefacts beyond autotools
-compile_commands.json
-.cache/
+# CMake build directories and IDE artefacts
 build/
-
-# ignore stuff produced by automake
-Makefile
-Makefile.in
-aclocal.m4
-autom4te.cache/
-compile
-config.guess
-config.h
-config.h.in
-config.log
-config.status
-config.sub
-configure
-depcomp
-examples/.deps/
-examples/Makefile
-examples/Makefile.in
-examples/affinity_stack
-examples/affinity_stack.o
-examples/list_cpus
-examples/list_cpus.o
-examples/simple_affinity
-examples/simple_affinity.o
-include/Makefile
-include/Makefile.in
-install-sh
-missing
-stamp-h1
-test-driver
-tests/.deps/
-tests/Makefile
-tests/Makefile.in
-tests/test
-tests/test.o
+build-*/
+out/
+.cache/
+compile_commands.json

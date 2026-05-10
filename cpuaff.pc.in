@@ -1,0 +1,14 @@
+# pkg-config file for cpuaff.
+#
+# Paths are resolved relative to this .pc file's directory (${pcfiledir})
+# rather than baked in at CMake-configure time, so the install is
+# relocatable: you can install to a staging prefix, move the tree, and
+# pkg-config still produces the right -I.
+prefix=${pcfiledir}/../..
+includedir=@PKGCONFIG_INCLUDEDIR_TEMPLATE@
+
+Name: cpuaff
+Description: @PROJECT_DESCRIPTION@
+URL: @PROJECT_HOMEPAGE_URL@
+Version: @PROJECT_VERSION@
+Cflags: -I${includedir}

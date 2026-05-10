@@ -18,14 +18,56 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 ### Planned for 2.0.0
 
-- CMake-only build with package-config and pkg-config exports;
-  autotools removed.
 - C++20 modernization: `std::expected`-based error reporting,
   `pthread_setaffinity_np` overloads for arbitrary-thread pinning,
   cgroup/cpuset awareness, dynamic `cpu_set_t` via `CPU_ALLOC` for
   hosts with more than 1024 CPUs.
 - Linux backend correctness fixes (sysfs parsing, `native_cpu_mapper`
   short-circuit, sysfs-fallback hardening).
+
+## [2.0.0-htaa.alpha.2] — 2026-05-09
+
+Phase 2: build system replacement. CMake replaces autotools end to
+end; a `cpuaff::cpuaff` `INTERFACE` target is exported with both
+CMake package-config and pkg-config metadata.
+
+### Added
+
+- `CMakeLists.txt` — header-only `INTERFACE` target
+  `cpuaff::cpuaff`, `find_package(cpuaff CONFIG)` support via
+  `cpuaffConfig.cmake` / `cpuaffConfigVersion.cmake` (SameMajorVersion
+  compatibility), pkg-config support via `cpuaff.pc`.
+- `cmake/cpuaffConfig.cmake.in` — package-config skeleton.
+- `cpuaff.pc.in` — pkg-config template; uses `${pcfiledir}` so the
+  installed tree is relocatable (verified by moving the install dir
+  and re-querying).
+- `examples/CMakeLists.txt`, `tests/CMakeLists.txt`.
+- `.github/workflows/ci.yml` — matrix CI over GCC 13 / Clang 18 on
+  ubuntu-24.04 with Ninja, including a `cmake --install` smoke test
+  that asserts the headers, `cpuaffConfig.cmake`, and `cpuaff.pc`
+  all land where consumers expect.
+- `CPUAFF_BUILD_EXAMPLES` and `CPUAFF_BUILD_TESTS` options
+  (default ON when top-level project, off when consumed via
+  `add_subdirectory` / `FetchContent`).
+
+### Changed
+
+- Test executable renamed from `test` to `cpuaff_tests` to avoid
+  collision with CMake's built-in `test` target.
+- `CONTRIBUTING.md` build instructions switched from autotools to
+  CMake.
+
+### Removed
+
+- `configure.ac`, all `Makefile.am` files, `bootstrap.sh`,
+  `cleanup.sh`.
+- `ChangeLog`, `NEWS`, `README`, `INSTALL` — empty
+  autotools-convention placeholders (the real docs are
+  `CHANGELOG.md` and `README.md`).
+- `packaging/debian.{trusty,xenial,zesty,artful}/` — three of these
+  Ubuntu releases are EOL and all four pointed at upstream's PPA.
+- `.travis.yml`, `.circleci/` — superseded by GitHub Actions.
+- The autotools artefact section of `.gitignore`.
 
 ## [2.0.0-htaa.alpha.1] — 2026-05-09
 
@@ -92,7 +134,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.1...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2
+[2.0.0-htaa.alpha.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.1...v2.0.0-htaa.alpha.2
 [2.0.0-htaa.alpha.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.0...v2.0.0-htaa.alpha.1
 [2.0.0-htaa.alpha.0]: https://github.com/rodgert/cpuaff/compare/v1.0.6-htaa.1...v2.0.0-htaa.alpha.0
 [1.0.6-htaa.1]: https://github.com/rodgert/cpuaff/releases/tag/v1.0.6-htaa.1
