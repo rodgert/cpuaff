@@ -1,0 +1,30 @@
+name: format
+
+on:
+  push:
+    branches: [master, v2]
+  pull_request:
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format-17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-17
+
+      - name: Check formatting
+        run: |
+          mapfile -d '' files < <(
+            find include examples tests \
+              -type f \( -name '*.hpp' -o -name '*.cpp' -o -name '*.inl' \) \
+              ! -path 'tests/catch.hpp' \
+              -print0
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no source files found"; exit 1
+          fi
+          clang-format-17 --dry-run --Werror --style=file "${files[@]}"

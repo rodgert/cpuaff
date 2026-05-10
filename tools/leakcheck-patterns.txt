@@ -1,0 +1,34 @@
+# Local-leak detection patterns for cpuaff.
+#
+# Each non-comment line is a POSIX extended regex. Any match in a
+# tracked or staged source file fails the leakcheck. Patterns target
+# *categories* of leakage (absolute home paths, internal project names,
+# personal addresses) rather than specific secrets — the intent is to
+# keep the public OSS repo focused on cpuaff and free of references to
+# the maintainer's local filesystem layout or downstream consumers'
+# internal infrastructure.
+#
+# To allowlist a file that legitimately contains a matching pattern
+# (e.g. this file itself, LICENSE, CHANGELOG.md), add it to the `allow`
+# array in tools/leakcheck.sh.
+
+# Absolute home paths
+/home/[a-z0-9_.-]+
+/Users/[A-Za-z0-9_.-]+
+
+# References to the maintainer's personal org-tree (GTD/BASB layout)
+~/org/
+\borg-(htaa|cpuaff|gcc|wg21|cljseq|music|personal|private|cadence|productivity|it-personal)\b
+
+# Downstream-consumer internal project names and host patterns.
+# (HTAA itself is a public firm; these are project/host names that
+# don't belong in a public OSS dependency's repo.)
+\bhtaabp-core\b
+\bketchum-[a-z]+
+\bBlackPearl\b
+\bhtaajump[0-9]+\b
+\bauprodcts[0-9]+\b
+\bdc3-htaa-svr[0-9]+\b
+
+# Personal email outside license / changelog (allowlisted per-file)
+thomas@hulltactical\.com

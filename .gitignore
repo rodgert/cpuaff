@@ -1,5 +1,32 @@
 packaging/deb.*
 
+# Secrets — never commit credentials, certs, keys, or env files.
+*.key
+*.pem
+*.crt
+*.pfx
+*.p12
+*.gpg
+*.kbx
+.env
+.env.*
+id_rsa*
+id_ed25519*
+secrets/
+.secrets/
+
+# Local-only editor and tool noise
+*.swp
+*~
+.idea/
+.vscode/
+.DS_Store
+
+# Local build / IDE artefacts beyond autotools
+compile_commands.json
+.cache/
+build/
+
 # ignore stuff produced by automake
 Makefile
 Makefile.in
