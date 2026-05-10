@@ -12,13 +12,16 @@ jobs:
       fail-fast: false
       matrix:
         compiler:
-          - { cc: gcc-13,    cxx: g++-13,     pkg: g++-13 }
-          - { cc: clang-18,  cxx: clang++-18, pkg: clang-18 }
+          - { name: gcc-12,    cc: gcc-12,    cxx: g++-12,     pkg: g++-12 }
+          - { name: gcc-13,    cc: gcc-13,    cxx: g++-13,     pkg: g++-13 }
+          - { name: gcc-14,    cc: gcc-14,    cxx: g++-14,     pkg: g++-14 }
+          - { name: clang-17,  cc: clang-17,  cxx: clang++-17, pkg: clang-17 }
+          - { name: clang-18,  cc: clang-18,  cxx: clang++-18, pkg: clang-18 }
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ${{ matrix.compiler.pkg }} + cmake
+      - name: Install ${{ matrix.compiler.pkg }} + cmake + ninja
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler.pkg }} cmake ninja-build
@@ -40,5 +43,30 @@ jobs:
         run: |
           cmake --install build --prefix ${{ runner.temp }}/cpuaff-install
           test -d ${{ runner.temp }}/cpuaff-install/include/cpuaff
-          test -f ${{ runner.temp }}/cpuaff-install/lib/cmake/cpuaff/cpuaffConfig.cmake
-          test -f ${{ runner.temp }}/cpuaff-install/lib/pkgconfig/cpuaff.pc
+          test -f ${{ runner.temp }}/cpuaff-install/lib/cmake/cpuaff/cpuaffConfig.cmake \
+            || test -f ${{ runner.temp }}/cpuaff-install/lib64/cmake/cpuaff/cpuaffConfig.cmake
+          test -f ${{ runner.temp }}/cpuaff-install/lib/pkgconfig/cpuaff.pc \
+            || test -f ${{ runner.temp }}/cpuaff-install/lib64/pkgconfig/cpuaff.pc
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doxygen + cmake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen cmake ninja-build
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build docs (DOXYGEN_WARN_AS_ERROR fails on missing tags)
+        run: cmake --build build --target cpuaff_docs
+
+      - name: Upload generated HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpuaff-docs-html
+          path: build/docs/html
+          retention-days: 14

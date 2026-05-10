@@ -16,6 +16,14 @@ endif()
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+# pthread_*affinity_np requires the pthreads runtime. On modern glibc
+# (≥ 2.34) the symbols are folded into libc and no link flag is
+# strictly needed; on older glibc / musl / etc. -lpthread is required.
+# Threads::Threads abstracts the platform variation and propagates
+# transitively to consumers via the cpuaff::cpuaff INTERFACE target.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 # ---------------------------------------------------------------------------
 # Library target
 # ---------------------------------------------------------------------------
@@ -32,6 +40,8 @@ target_include_directories(cpuaff INTERFACE
 # C++23 mode); otherwise the minimal polyfill in
 # include/cpuaff/detail/expected.hpp takes over transparently.
 target_compile_features(cpuaff INTERFACE cxx_std_20)
+
+target_link_libraries(cpuaff INTERFACE Threads::Threads)
 
 # ---------------------------------------------------------------------------
 # Examples and tests — only when this is the top-level project
@@ -92,3 +102,30 @@ endif()
 configure_file(cpuaff.pc.in cpuaff.pc @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cpuaff.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+# ---------------------------------------------------------------------------
+# Optional documentation target. Driven by doxygen_add_docs(); runs only if
+# Doxygen is installed. Output lands in ${CMAKE_BINARY_DIR}/docs/html so it
+# doesn't collide with the upstream Jekyll site living under docs/.
+# ---------------------------------------------------------------------------
+
+if(PROJECT_IS_TOP_LEVEL)
+    find_package(Doxygen QUIET)
+    if(Doxygen_FOUND)
+        set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/docs)
+        set(DOXYGEN_RECURSIVE YES)
+        set(DOXYGEN_EXTRACT_ALL YES)
+        set(DOXYGEN_GENERATE_HTML YES)
+        set(DOXYGEN_GENERATE_LATEX NO)
+        set(DOXYGEN_QUIET YES)
+        # Fail the build on broken \refs, missing \param tags, etc.
+        # `FAIL_ON_WARNINGS` accumulates the warnings then errors out at
+        # the end so we see the full list rather than only the first.
+        set(DOXYGEN_WARN_AS_ERROR FAIL_ON_WARNINGS)
+        set(DOXYGEN_HAVE_DOT NO)
+
+        doxygen_add_docs(cpuaff_docs
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            COMMENT "Generating cpuaff API documentation")
+    endif()
+endif()

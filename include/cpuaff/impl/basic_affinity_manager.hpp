@@ -615,7 +615,7 @@ class basic_affinity_manager
      *
      * \see try_get_available_cpus() for the empty-intersection
      *      semantics — same caveats apply here.
-     * \since v2.0.0-htaa.beta.1
+     * \since v2.0.0-htaa.beta.2
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
     try_get_available_cpus(pthread_t t) const
@@ -672,9 +672,7 @@ class basic_affinity_manager
         }
         return result;
     }
-   public:
 
-   private:
     /*!
      * Initialize a basic_affinity_manager.  This reads the hardware layout and
      * creates the cpu and pci mappings.

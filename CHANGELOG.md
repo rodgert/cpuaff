@@ -18,9 +18,98 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 ### Planned for 2.0.0
 
-- Test surface hardening: round-robin invariant test, cgroup
-  interaction tests, `try_*` API tests, errno-propagation tests,
-  GitHub Actions matrix expansion.
+- Cutover: fast-forward `v2` → `master`, tag `v2.0.0-htaa.1`.
+
+## [2.0.0-htaa.rc.1] — 2026-05-10
+
+Phase 5: test + CI hardening, plus three trivial doc/source fixes
+from the adversarial review of beta.2. No behavioural change to the
+library; this is the release-candidate gate before v2.0.0-htaa.1
+final.
+
+### Added — tests
+
+- `cpu_set_compat` TEST_CASE: protects beta.2's basic_cpu_set
+  source-compat restoration. Compile-time tripwires
+  (`static_assert`s on operator==/operator<=>/swap/move-construct)
+  plus runtime exercises for ==/!=, <=>, member + ADL swap, merge,
+  contains/find/count, get_allocator/key_comp/value_comp, and
+  iteration via the using-declared iterators. If a future refactor
+  drops any of these, the test fails to compile rather than
+  silently regressing.
+- `round_robin_invariant` TEST_CASE: replaces the v1
+  non-negative-id smoke test with the *actual* invariant — group
+  cpus by processing_unit, hand out all PU=0 cpus before any PU=1
+  cpu, then wrap. Plus tests for the empty-allocator case
+  (`affinity_errc::allocator_empty` from `try_allocate()`,
+  empty-set success from `try_allocate(count)`).
+- `pthread_t_overloads` TEST_CASE: spawn a worker that blocks on a
+  condition variable; from the main thread, drive its affinity via
+  `try_get_affinity(pthread_t)` / `try_set_affinity(pthread_t,
+  cpus)` / `try_pin(pthread_t, cpu)` /
+  `try_get_available_cpus(pthread_t)`. These overloads previously
+  had zero internal coverage.
+- `error_category` TEST_CASE: exercises both halves of
+  `affinity_category()` — cpuaff-internal codes (≥ 10000) match by
+  direct enum comparison and don't masquerade as `std::errc`;
+  errno-shaped codes round-trip through `std::generic_category`;
+  `error_from_errno` produces matching codes; the message()
+  fall-through for unrecognised values uses `std::generic_category`
+  rather than the previous "unknown" placeholder.
+- `expected_polyfill` TEST_CASE: validates the std::expected-parity
+  contract — happy paths for value and void specialisations;
+  `value()` throws `bad_expected_access<E>` on missing-value (the
+  beta.2 alignment with std::expected). Runs identically whether
+  `cpuaff::expected` aliases `std::expected` or uses the polyfill,
+  so the contract is held to on both paths.
+- `try_get_available_cpus` TEST_CASE: cgroup/cpuset-aware accessor
+  coverage — default-available equals topology when unrestricted;
+  pinning to a single cpu narrows the available set to that cpu
+  (simulates cgroup restriction without requiring cgroup setup);
+  pthread_t overload reports the worker's available cpus.
+
+### Added — CI
+
+- GitHub Actions build matrix expanded from 2 → 5 compilers:
+  gcc-12 (htaabp-core minimum), gcc-13, gcc-14, clang-17, clang-18
+  on ubuntu-24.04. Each runs configure + build + ctest + install
+  smoke test (now accepting both `lib/` and `lib64/` layouts).
+- New `docs` CI job: installs doxygen, runs
+  `cmake --build build --target cpuaff_docs`. The
+  `doxygen_add_docs()` target sets `WARN_AS_ERROR=FAIL_ON_WARNINGS`,
+  so missing `\param` tags / broken `\ref`s / stale doxygen
+  comments fail CI rather than slipping into the generated HTML.
+  Generated `build/docs/html` is uploaded as a GitHub Actions
+  artefact for download.
+
+### Changed
+
+- `CMakeLists.txt` now `find_package(Threads REQUIRED)` and
+  propagates `Threads::Threads` via the cpuaff::cpuaff INTERFACE
+  target. On modern glibc (≥ 2.34) pthread is folded into libc; on
+  older glibc / musl / etc., `-pthread` is required. Consumers
+  doing `find_package(cpuaff CONFIG)` no longer need to link
+  pthread separately.
+- `CMakeLists.txt` adds an optional `cpuaff_docs` target (only
+  built when find_package(Doxygen) succeeds and
+  PROJECT_IS_TOP_LEVEL is set, so add_subdirectory / FetchContent
+  consumers don't pick it up).
+
+### Fixed (from adversarial review of beta.2)
+
+- `basic_affinity_manager.hpp`:
+  `try_get_available_cpus(pthread_t)` was tagged
+  `\since v2.0.0-htaa.beta.1` but is brand-new in beta.2 (the
+  doxygen pass cargo-culted from the sibling overload). Corrected
+  to `beta.2`.
+- `basic_round_robin_allocator.hpp`: the comment block introducing
+  the Phase 4 try_* surface still claimed
+  "Returns std::errc::no_message_available if the allocator is
+  empty" — beta.2 replaced that with `affinity_errc::allocator_empty`.
+  Code was already correct; comment was stale.
+- `basic_affinity_manager.hpp`: removed the dead
+  `   public:\n\n   private:` access-specifier churn left over
+  from inserting the new private helpers.
 
 ## [2.0.0-htaa.beta.2] — 2026-05-10
 
@@ -343,7 +432,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.2...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.1...v2
+[2.0.0-htaa.rc.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.2...v2.0.0-htaa.rc.1
 [2.0.0-htaa.beta.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2.0.0-htaa.beta.2
 [2.0.0-htaa.beta.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2.0.0-htaa.beta.1
 [2.0.0-htaa.alpha.3]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2.0.0-htaa.alpha.3

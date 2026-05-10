@@ -157,8 +157,8 @@ class basic_round_robin_allocator
     // ---------------------------------------------------------------
     // Phase 4 (v2 cycle): error-returning API.
     //
-    // Returns std::errc::no_message_available if the allocator is
-    // empty (no cpus to hand out). The bool-returning legacy API was
+    // Returns cpuaff::affinity_errc::allocator_empty if the allocator
+    // has no cpus to hand out. The bool-returning legacy API was
     // willing to UB in this case.
     // ---------------------------------------------------------------
 
