@@ -31,6 +31,8 @@
 #pragma once
 
 #include "config.hpp"
+#include "detail/expected.hpp"
+#include "error.hpp"
 
 #include "cpu_spec.hpp"
 #include "impl/basic_affinity_manager.hpp"

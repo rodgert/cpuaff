@@ -35,62 +35,58 @@ int main(int argc, char *argv[])
 {
     cpuaff::affinity_manager manager;
 
-    if (manager.has_cpus())
+    if (!manager.has_cpus())
     {
-        cpuaff::affinity_stack stack(manager);
-
-        cpuaff::cpu_set cpus;
-        manager.get_affinity(cpus);
-
-        std::cout << "Initial Affinity:" << std::endl;
-
-        cpuaff::cpu_set::iterator i = cpus.begin();
-        cpuaff::cpu_set::iterator iend = cpus.end();
-
-        for (; i != iend; ++i)
-        {
-            std::cout << "  " << (*i) << std::endl;
-        }
-
-        std::cout << std::endl;
-
-        stack.push_affinity();
-
-        // set the affinity to all the processing units on the first core
-        cpuaff::cpu_set core_0;
-        manager.get_cpus_by_core(core_0, 0);
-
-        manager.set_affinity(core_0);
-        manager.get_affinity(cpus);
-
-        std::cout << "Affinity After Calling set_affinity():" << std::endl;
-        i = cpus.begin();
-        iend = cpus.end();
-
-        for (; i != iend; ++i)
-        {
-            std::cout << "  " << (*i) << std::endl;
-        }
-
-        std::cout << std::endl;
-
-        // restore the affinity to its initial value
-        stack.pop_affinity();
-
-        manager.get_affinity(cpus);
-
-        std::cout << "Affinity After Calling pop_affinity():" << std::endl;
-        i = cpus.begin();
-        iend = cpus.end();
-
-        for (; i != iend; ++i)
-        {
-            std::cout << "  " << (*i) << std::endl;
-        }
-
-        return 0;
+        std::cerr << "cpuaff: unable to load cpus." << std::endl;
+        return -1;
     }
 
-    std::cerr << "cpuaff: unable to load cpus." << std::endl;
-    return -1;
+    cpuaff::affinity_stack stack(manager);
+
+    auto print = [&manager](const char *label) -> int {
+        auto cpus = manager.try_get_affinity();
+        if (!cpus)
+        {
+            std::cerr << "cpuaff: try_get_affinity failed: "
+                      << cpus.error().message() << std::endl;
+            return -1;
+        }
+        std::cout << label << std::endl;
+        for (const auto &cpu : *cpus) std::cout << "  " << cpu << std::endl;
+        std::cout << std::endl;
+        return 0;
+    };
+
+    if (print("Initial Affinity:") != 0) return -1;
+
+    if (auto r = stack.try_push_affinity(); !r)
+    {
+        std::cerr << "cpuaff: try_push_affinity failed: "
+                  << r.error().message() << std::endl;
+        return -1;
+    }
+
+    // Set the affinity to all the processing units on the first core.
+    cpuaff::cpu_set core_0;
+    manager.get_cpus_by_core(core_0, 0);
+    if (auto r = manager.try_set_affinity(core_0); !r)
+    {
+        std::cerr << "cpuaff: try_set_affinity failed: "
+                  << r.error().message() << std::endl;
+        return -1;
+    }
+
+    if (print("Affinity After Calling try_set_affinity():") != 0) return -1;
+
+    // Restore the affinity to its initial value.
+    if (auto r = stack.try_pop_affinity(); !r)
+    {
+        std::cerr << "cpuaff: try_pop_affinity failed: "
+                  << r.error().message() << std::endl;
+        return -1;
+    }
+
+    if (print("Affinity After Calling try_pop_affinity():") != 0) return -1;
+
+    return 0;
 }

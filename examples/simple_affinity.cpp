@@ -35,42 +35,51 @@ int main(int argc, char *argv[])
 {
     cpuaff::affinity_manager manager;
 
-    if (manager.has_cpus())
+    if (!manager.has_cpus())
     {
-        cpuaff::cpu_set cpus;
-        manager.get_affinity(cpus);
-
-        std::cout << "Initial Affinity:" << std::endl;
-
-        cpuaff::cpu_set::iterator i = cpus.begin();
-        cpuaff::cpu_set::iterator iend = cpus.end();
-
-        for (; i != iend; ++i)
-        {
-            std::cout << "  " << (*i) << std::endl;
-        }
-
-        std::cout << std::endl;
-
-        // set the affinity to all the processing units on the first core
-        cpuaff::cpu_set core_0;
-        manager.get_cpus_by_core(core_0, 0);
-
-        manager.set_affinity(core_0);
-        manager.get_affinity(cpus);
-
-        std::cout << "Affinity After Calling set_affinity():" << std::endl;
-        i = cpus.begin();
-        iend = cpus.end();
-
-        for (; i != iend; ++i)
-        {
-            std::cout << "  " << (*i) << std::endl;
-        }
-
-        return 0;
+        std::cerr << "cpuaff: unable to load cpus." << std::endl;
+        return -1;
     }
 
-    std::cerr << "cpuaff: unable to load cpus." << std::endl;
-    return -1;
+    auto initial = manager.try_get_affinity();
+    if (!initial)
+    {
+        std::cerr << "cpuaff: try_get_affinity failed: "
+                  << initial.error().message() << std::endl;
+        return -1;
+    }
+
+    std::cout << "Initial Affinity:" << std::endl;
+    for (const auto &cpu : *initial)
+    {
+        std::cout << "  " << cpu << std::endl;
+    }
+    std::cout << std::endl;
+
+    // Set the affinity to all the processing units on the first core.
+    cpuaff::cpu_set core_0;
+    manager.get_cpus_by_core(core_0, 0);
+
+    if (auto r = manager.try_set_affinity(core_0); !r)
+    {
+        std::cerr << "cpuaff: try_set_affinity failed: "
+                  << r.error().message() << std::endl;
+        return -1;
+    }
+
+    auto after = manager.try_get_affinity();
+    if (!after)
+    {
+        std::cerr << "cpuaff: try_get_affinity failed: "
+                  << after.error().message() << std::endl;
+        return -1;
+    }
+
+    std::cout << "Affinity After Calling try_set_affinity():" << std::endl;
+    for (const auto &cpu : *after)
+    {
+        std::cout << "  " << cpu << std::endl;
+    }
+
+    return 0;
 }

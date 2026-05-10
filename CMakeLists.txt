@@ -27,8 +27,11 @@ target_include_directories(cpuaff INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-# Phase 4 will bump this to cxx_std_20 along with the API modernization.
-target_compile_features(cpuaff INTERFACE cxx_std_17)
+# C++20 baseline (Phase 4). std::expected is preferred when the
+# consumer's toolchain ships it (libstdc++ ≥ 12 or libc++ ≥ 16 in
+# C++23 mode); otherwise the minimal polyfill in
+# include/cpuaff/detail/expected.hpp takes over transparently.
+target_compile_features(cpuaff INTERFACE cxx_std_20)
 
 # ---------------------------------------------------------------------------
 # Examples and tests — only when this is the top-level project

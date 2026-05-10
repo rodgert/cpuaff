@@ -132,45 +132,40 @@ class basic_native_cpu_mapper
         else
         {
             bool retval = true;
-            cpu_set_type orig;
 
-            if (affinity_manager.get_affinity(orig))
+            auto orig_result = affinity_manager.try_get_affinity();
+            if (!orig_result) return false;
+            cpu_set_type orig = *std::move(orig_result);
+
+            for (const auto &cpu : cpus)
             {
-                typename cpu_set_type::iterator i = cpus.begin();
-                typename cpu_set_type::iterator iend = cpus.end();
+                cpu_set_type affinity;
+                affinity.insert(cpu);
 
-                for (; i != iend; ++i)
+                if (affinity_manager.try_set_affinity(affinity).has_value())
                 {
-                    cpu_set_type affinity;
-                    affinity.insert(*i);
+                    std::set< native_cpu_wrapper_type > ids;
 
-                    if (affinity_manager.set_affinity(affinity))
+                    if (native_get_affinity_type()(ids) && ids.size() == 1)
                     {
-                        std::set< native_cpu_wrapper_type > ids;
-
-                        if (native_get_affinity_type()(ids) && ids.size() == 1)
-                        {
-                            cpu_by_native_[*ids.begin()] = *i;
-                            native_by_cpu_[*i] = *ids.begin();
-                        }
-                        else
-                        {
-                            retval = false;
-                            break;
-                        }
+                        cpu_by_native_[*ids.begin()] = cpu;
+                        native_by_cpu_[cpu] = *ids.begin();
                     }
                     else
                     {
                         retval = false;
+                        break;
                     }
                 }
+                else
+                {
+                    retval = false;
+                }
+            }
 
-                affinity_manager.set_affinity(orig);
-            }
-            else
-            {
-                retval = false;
-            }
+            // Best-effort restore of the original affinity; we discard
+            // the result deliberately.
+            (void)affinity_manager.try_set_affinity(orig);
 
             return retval;
         }

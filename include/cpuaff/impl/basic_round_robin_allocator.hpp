@@ -31,10 +31,13 @@
 #pragma once
 
 #include "../config.hpp"
+#include "../detail/expected.hpp"
+#include "../error.hpp"
 #include "basic_cpu.hpp"
 #include "basic_cpu_set.hpp"
 #include <map>
 #include <queue>
+#include <system_error>
 
 namespace cpuaff
 {
@@ -67,7 +70,13 @@ class basic_round_robin_allocator
      * Get the next cpu in the round-robin.
      *
      * \return the next cpu in the round robin
+     *
+     * \deprecated Calls front() / pop() on an internal queue with no
+     * empty-check; calling on an empty allocator is undefined
+     * behaviour. Prefer try_allocate().
      */
+    [[deprecated("use try_allocate() — returns cpuaff::expected and "
+                 "doesn't UB on an empty allocator")]]
     inline cpu_type allocate()
     {
         cpu_type retval = cpu_queue_.front();
@@ -79,24 +88,80 @@ class basic_round_robin_allocator
     /*!
      * Get the next count cpus in the round-robin.
      *
-     * \param cpus [out] the set of the next count cpus in the round-robin
-     * \param count [in] the number of cpus to return.  If this number is
-     *                   greater than the total number of cpus in the
-     *                   round-robin just the full set will be returned.
+     * \deprecated Prefer try_allocate(cpu_set_type&, uint32_t).
      */
+    [[deprecated("use try_allocate()")]]
     inline bool allocate(cpu_set_type &cpus, uint32_t count)
     {
         cpus.clear();
 
         for (uint32_t i = 0; i < count; ++i)
         {
-            cpus.insert(allocate());
+            if (cpu_queue_.empty()) return !cpus.empty();
+            cpu_type retval = cpu_queue_.front();
+            cpu_queue_.pop();
+            cpu_queue_.push(retval);
+            cpus.insert(retval);
         }
 
         return true;
     }
 
-    inline int size() { return cpu_queue_.size(); }
+    [[nodiscard]] inline std::size_t size() const noexcept
+    {
+        return cpu_queue_.size();
+    }
+
+    [[nodiscard]] inline bool empty() const noexcept
+    {
+        return cpu_queue_.empty();
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 4 (v2 cycle): error-returning API.
+    //
+    // Returns std::errc::no_message_available if the allocator is
+    // empty (no cpus to hand out). The bool-returning legacy API was
+    // willing to UB in this case.
+    // ---------------------------------------------------------------
+
+    /*!
+     * Get the next cpu in the round-robin. Returns
+     * std::errc::no_message_available if the allocator is empty.
+     */
+    [[nodiscard]] inline cpuaff::expected< cpu_type, std::error_code >
+    try_allocate()
+    {
+        if (cpu_queue_.empty())
+        {
+            return cpuaff::unexpected< std::error_code >(
+                std::make_error_code(std::errc::no_message_available));
+        }
+        cpu_type retval = cpu_queue_.front();
+        cpu_queue_.pop();
+        cpu_queue_.push(retval);
+        return retval;
+    }
+
+    /*!
+     * Get up to `count` cpus in the round-robin order. Always
+     * succeeds (returning an empty result if the allocator is empty,
+     * a smaller set if count exceeds the number of distinct cpus).
+     */
+    [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
+    try_allocate(uint32_t count)
+    {
+        cpu_set_type out;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            if (cpu_queue_.empty()) break;
+            cpu_type retval = cpu_queue_.front();
+            cpu_queue_.pop();
+            cpu_queue_.push(retval);
+            out.insert(retval);
+        }
+        return out;
+    }
 
    private:
     /*!

@@ -18,9 +18,97 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 ### Planned for 2.0.0
 
-- C++20 modernization: `std::expected`-based error reporting,
-  `pthread_setaffinity_np` overloads for arbitrary-thread pinning,
-  cgroup/cpuset awareness.
+- Test surface hardening: round-robin invariant test, cgroup
+  interaction tests, `try_*` API tests, errno-propagation tests,
+  GitHub Actions matrix expansion.
+
+## [2.0.0-htaa.beta.1] — 2026-05-09
+
+Phase 4: C++20 API modernization. Adds the `try_*` family of
+error-returning methods alongside the existing bool API (now
+[[deprecated]]); adds `pthread_t` overloads for arbitrary-thread
+pinning; adds cgroup/cpuset-aware `try_get_available_cpus()`; bumps
+the baseline to C++20.
+
+### Added
+
+- `cpuaff::expected<T, E>` — aliases `std::expected` when the
+  toolchain ships it (`__cpp_lib_expected >= 202202L`, libstdc++ ≥ 12
+  or libc++ ≥ 16 in C++23 mode); otherwise falls through to a minimal
+  `std::variant`-/`std::optional`-backed polyfill in
+  `include/cpuaff/detail/expected.hpp` covering the surface cpuaff
+  uses internally (has_value / value / operator* / operator-> /
+  error / void specialisation).
+- `cpuaff::affinity_errc` enum and `cpuaff::affinity_category()` —
+  POSIX-errno-shaped `std::error_code`s for sched_*affinity /
+  pthread_*affinity_np / `CPU_ALLOC` failures; mapped onto
+  `std::generic_category` so `ec == std::errc::invalid_argument` etc.
+  still matches.
+- `basic_affinity_manager` `try_*` family:
+  ```
+  expected<cpu_set_type, error_code> try_get_affinity() const;
+  expected<cpu_set_type, error_code> try_get_affinity(pthread_t) const;
+  expected<void, error_code>         try_set_affinity(cpu_set_type) const;
+  expected<void, error_code>         try_set_affinity(pthread_t,
+                                                       cpu_set_type) const;
+  expected<void, error_code>         try_pin(cpu_type) const;
+  expected<void, error_code>         try_pin(pthread_t, cpu_type) const;
+  expected<cpu_set_type, error_code> try_get_available_cpus() const;
+  ```
+  All `[[nodiscard]]`. Errors carry the underlying errno so callers
+  can distinguish cgroup restriction (`EINVAL`) from missing
+  privilege (`EPERM`) from a vanished target thread (`ESRCH`) —
+  diagnostics the legacy bool API silently dropped.
+- `basic_affinity_stack` `try_*` family mirroring the manager:
+  `try_push_affinity`, `try_pop_affinity`, `try_get_affinity`,
+  `try_set_affinity`. `try_pop_affinity` returns
+  `std::errc::no_message_available` when the stack is empty.
+- `basic_round_robin_allocator` `try_allocate()` and
+  `try_allocate(uint32_t count)` — return
+  `std::errc::no_message_available` on an empty allocator (the
+  legacy `allocate()` was UB in that case). Plus public `empty()`
+  / `[[nodiscard]] size()` getters.
+- `cgroup/cpuset awareness` via `try_get_available_cpus()` — returns
+  the intersection of the topology's CPUs (loaded from `/sys` at
+  construction) with the inherited affinity mask from
+  `sched_getaffinity`. Use this rather than `get_cpus()` when
+  scheduling work under systemd `CPUAffinity=` or Docker
+  `--cpuset-cpus`, where the topology will list CPUs that
+  `try_set_affinity()` would refuse with `EINVAL`.
+- `pthread_t` overloads on the `linux_impl` `get_affinity` /
+  `set_affinity` functors (`apply(t, ...)` / `query(t, ...)`),
+  routed through `pthread_setaffinity_np` /
+  `pthread_getaffinity_np`.
+- `cpuaff::cpu_set::contains` (C++20 std::set::contains exposed via
+  the using-declaration sweep on the cpu_set composition refactor
+  below).
+
+### Changed
+
+- C++ baseline bumped from C++17 to **C++20**
+  (`target_compile_features(cpuaff INTERFACE cxx_std_20)`).
+- `basic_cpu_set` no longer publicly inherits `std::set` — the
+  derived-to-base conversion that enabled the non-virtual-destructor
+  UB hazard is gone, but every member of the public surface is
+  re-exposed via using-declarations so external callers see no
+  source-level change. Iterators, lookup, mutation, and the
+  ostream operator<< all still resolve under their familiar names.
+- Internal callers (`basic_native_cpu_mapper` walk fallback,
+  `basic_affinity_stack` legacy methods, the bundled examples, the
+  test suite) all migrated to the new `try_*` API. The bundled
+  examples now demonstrate the v2 idiom and print
+  `errc.message()` on failure paths so the example doubles as
+  documentation for the error surface.
+- Bundled examples build with no `-Wdeprecated-declarations`
+  warnings.
+
+### Deprecated
+
+- All bool-returning methods in the affinity / pin / allocate /
+  stack surface: `get_affinity`, `set_affinity`, `pin`,
+  `push_affinity`, `pop_affinity`, `allocate`. Each carries a
+  `[[deprecated]]` attribute pointing at its `try_*` replacement.
+  Will be removed in v3.
 
 ## [2.0.0-htaa.alpha.3] — 2026-05-09
 
@@ -175,7 +263,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2
+[2.0.0-htaa.beta.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2.0.0-htaa.beta.1
 [2.0.0-htaa.alpha.3]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.2...v2.0.0-htaa.alpha.3
 [2.0.0-htaa.alpha.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.1...v2.0.0-htaa.alpha.2
 [2.0.0-htaa.alpha.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.0...v2.0.0-htaa.alpha.1

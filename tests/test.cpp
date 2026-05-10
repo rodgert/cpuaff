@@ -133,24 +133,26 @@ TEST_CASE("affinity_manager", "[affinity_manager]")
 
         // We can get the affinity of the current thread
         {
-            cpuaff::cpu_set cpus;
-            REQUIRE(manager.get_affinity(cpus));
-            REQUIRE(!cpus.empty());
+            auto result = manager.try_get_affinity();
+            REQUIRE(result.has_value());
+            REQUIRE(!result->empty());
 
-            WARN("Current affinity: " << cpus);
+            WARN("Current affinity: " << *result);
         }
 
         // We can set the affinity of the current thread
         {
-            cpuaff::cpu_set cpus;
             cpuaff::cpu_set new_affinity;
-
             new_affinity.insert(first_cpu);
 
             WARN("Setting affinity to: " << new_affinity);
 
-            REQUIRE(manager.set_affinity(new_affinity));
-            REQUIRE(manager.get_affinity(cpus));
+            REQUIRE(manager.try_set_affinity(new_affinity).has_value());
+
+            auto result = manager.try_get_affinity();
+            REQUIRE(result.has_value());
+
+            cpuaff::cpu_set cpus = *std::move(result);
 
             cpuaff::cpu_set::iterator i = cpus.begin();
             cpuaff::cpu_set::iterator iend = cpus.end();
@@ -167,15 +169,17 @@ TEST_CASE("affinity_manager", "[affinity_manager]")
 
         // We can set the affinity of the current thread back to all cpus
         {
-            cpuaff::cpu_set cpus;
             cpuaff::cpu_set new_affinity;
-
             REQUIRE(manager.get_cpus(new_affinity));
 
             WARN("Setting affinity to: " << new_affinity);
 
-            REQUIRE(manager.set_affinity(new_affinity));
-            REQUIRE(manager.get_affinity(cpus));
+            REQUIRE(manager.try_set_affinity(new_affinity).has_value());
+
+            auto result = manager.try_get_affinity();
+            REQUIRE(result.has_value());
+
+            cpuaff::cpu_set cpus = *std::move(result);
 
             cpuaff::cpu_set::iterator i = cpus.begin();
             cpuaff::cpu_set::iterator iend = cpus.end();
@@ -192,12 +196,14 @@ TEST_CASE("affinity_manager", "[affinity_manager]")
 
         // We can pin the affinity of the current thread to a particular CPU
         {
-            cpuaff::cpu_set cpus;
-
             WARN("Setting affinity to: " << first_cpu);
 
-            REQUIRE(manager.pin(first_cpu));
-            REQUIRE(manager.get_affinity(cpus));
+            REQUIRE(manager.try_pin(first_cpu).has_value());
+
+            auto result = manager.try_get_affinity();
+            REQUIRE(result.has_value());
+
+            cpuaff::cpu_set cpus = *std::move(result);
 
             REQUIRE(cpus.size() == 1);
             REQUIRE(*cpus.begin() == first_cpu);
@@ -217,21 +223,22 @@ TEST_CASE("affinity_stack", "[affinity_stack]")
 
         cpuaff::affinity_stack stack(manager);
 
-        cpuaff::cpu_set original_affinity;
-        cpuaff::cpu_set cpus;
-
         // get the current affinity of this thread
-        REQUIRE(stack.get_affinity(original_affinity));
-        REQUIRE(!original_affinity.empty());
+        auto orig_result = stack.try_get_affinity();
+        REQUIRE(orig_result.has_value());
+        REQUIRE(!orig_result->empty());
+        cpuaff::cpu_set original_affinity = *std::move(orig_result);
 
         // push the current affinity of this thread onto the stack
-        REQUIRE(stack.push_affinity());
+        REQUIRE(stack.try_push_affinity().has_value());
 
         // verify that the affinities are the same (as we didn't change them)
-        REQUIRE(stack.get_affinity(cpus));
-        REQUIRE(cpus.size() == original_affinity.size());
-
         {
+            auto result = stack.try_get_affinity();
+            REQUIRE(result.has_value());
+            cpuaff::cpu_set cpus = *std::move(result);
+            REQUIRE(cpus.size() == original_affinity.size());
+
             cpuaff::cpu_set::iterator i = cpus.begin();
             cpuaff::cpu_set::iterator iend = cpus.end();
             cpuaff::cpu_set::iterator j = original_affinity.begin();
@@ -245,13 +252,15 @@ TEST_CASE("affinity_stack", "[affinity_stack]")
 
         cpuaff::cpu_set new_affinity;
         new_affinity.insert(*original_affinity.begin());
-        cpus.clear();
 
         // set the thread's affinity to a single core
-        REQUIRE(stack.set_affinity(new_affinity));
-        REQUIRE(stack.get_affinity(cpus));
+        REQUIRE(stack.try_set_affinity(new_affinity).has_value());
 
         {
+            auto result = stack.try_get_affinity();
+            REQUIRE(result.has_value());
+            cpuaff::cpu_set cpus = *std::move(result);
+
             cpuaff::cpu_set::iterator i = cpus.begin();
             cpuaff::cpu_set::iterator iend = cpus.end();
             cpuaff::cpu_set::iterator j = new_affinity.begin();
@@ -263,14 +272,14 @@ TEST_CASE("affinity_stack", "[affinity_stack]")
             }
         }
 
-        cpus.clear();
-
         // pop the affinity off the top of the stack and test that it is the
         // same as the original affinity
-        REQUIRE(stack.pop_affinity());
-        REQUIRE(stack.get_affinity(cpus));
-
+        REQUIRE(stack.try_pop_affinity().has_value());
         {
+            auto result = stack.try_get_affinity();
+            REQUIRE(result.has_value());
+            cpuaff::cpu_set cpus = *std::move(result);
+
             cpuaff::cpu_set::iterator i = cpus.begin();
             cpuaff::cpu_set::iterator iend = cpus.end();
             cpuaff::cpu_set::iterator j = original_affinity.begin();
@@ -302,13 +311,17 @@ TEST_CASE("round_robin_allocator", "[round_robin_allocator]")
 
         for (std::size_t i = 0; i < cpus.size() * 2; ++i)
         {
-            cpu = allocator.allocate();
+            auto result = allocator.try_allocate();
+            REQUIRE(result.has_value());
+            cpu = *std::move(result);
             bool test = cpu.socket() >= 0 && cpu.core() >= 0 &&
                         cpu.processing_unit() >= 0;
             REQUIRE(test);
         }
 
-        REQUIRE(allocator.allocate(allocated_cpus, 4));
+        auto batch = allocator.try_allocate(4u);
+        REQUIRE(batch.has_value());
+        allocated_cpus = *std::move(batch);
 
         bool test =
             allocated_cpus.size() == 4 ||

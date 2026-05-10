@@ -31,10 +31,13 @@
 #pragma once
 
 #include "../config.hpp"
+#include "../detail/expected.hpp"
+#include "../error.hpp"
 #include "basic_affinity_manager.hpp"
 #include "basic_cpu.hpp"
 #include "basic_cpu_set.hpp"
 #include <stack>
+#include <system_error>
 
 namespace cpuaff
 {
@@ -67,58 +70,120 @@ class basic_affinity_stack
     /*!
      * Push the current cpu affinity onto the stack.
      *
-     * \return true if successful, false otherwise.
+     * \deprecated Prefer try_push_affinity() — returns
+     * cpuaff::expected with errno diagnostics. Will be removed in v3.
      */
+    [[deprecated("use try_push_affinity()")]]
     inline bool push_affinity()
     {
-        cpu_set_type cpus;
-        if (affinity_manager_.get_affinity(cpus))
-        {
-            affinity_stack_.push(cpus);
-            return true;
-        }
-
-        return false;
+        auto current = affinity_manager_.try_get_affinity();
+        if (!current) return false;
+        affinity_stack_.push(*std::move(current));
+        return true;
     }
 
     /*!
      * Pops a previously pushed affinity off the stack and sets the current
      * thread's affinity to the popped affinity.
      *
-     * \return true if successful, false otherwise.
+     * \deprecated Prefer try_pop_affinity() — returns
+     * cpuaff::expected with errno diagnostics. Will be removed in v3.
      */
+    [[deprecated("use try_pop_affinity()")]]
     inline bool pop_affinity()
     {
-        if (!affinity_stack_.empty())
-        {
-            cpu_set_type cpus = affinity_stack_.top();
-            affinity_stack_.pop();
-            return affinity_manager_.set_affinity(cpus);
-        }
-
-        return false;
+        if (affinity_stack_.empty()) return false;
+        cpu_set_type cpus = affinity_stack_.top();
+        affinity_stack_.pop();
+        return affinity_manager_.try_set_affinity(cpus).has_value();
     }
 
     /*!
      * Get the affinity of the calling thread
      *
-     * \param cpus [out] set of cpus that this thread can run on
-     * \return true if the affinity could be determined, false otherwise.
+     * \deprecated Prefer try_get_affinity() — returns
+     * cpuaff::expected with errno diagnostics. Will be removed in v3.
      */
+    [[deprecated("use try_get_affinity()")]]
     inline bool get_affinity(cpu_set_type &cpus)
     {
-        return affinity_manager_.get_affinity(cpus);
+        auto result = affinity_manager_.try_get_affinity();
+        if (!result) return false;
+        cpus = *std::move(result);
+        return true;
     }
 
     /*!
      * Set the affinity of the calling thread.
      *
-     * \param cpus [in] the set of cpus that this thread can run on
-     * \return true if the affinity could be set, false otherwise.
+     * \deprecated Prefer try_set_affinity() — returns
+     * cpuaff::expected with errno diagnostics. Will be removed in v3.
      */
+    [[deprecated("use try_set_affinity()")]]
     inline bool set_affinity(const cpu_set_type &cpus)
     {
-        return affinity_manager_.set_affinity(cpus);
+        return affinity_manager_.try_set_affinity(cpus).has_value();
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 4 (v2 cycle): error-returning API mirroring
+    // basic_affinity_manager's try_* family.
+    // ---------------------------------------------------------------
+
+    /*!
+     * Push the current cpu affinity onto the stack.
+     *
+     * \return cpuaff::expected<void, std::error_code>; the error
+     * carries the underlying errno from sched_getaffinity.
+     */
+    [[nodiscard]] inline cpuaff::expected< void, std::error_code >
+    try_push_affinity()
+    {
+        auto current = affinity_manager_.try_get_affinity();
+        if (!current)
+        {
+            return cpuaff::unexpected< std::error_code >(current.error());
+        }
+        affinity_stack_.push(*std::move(current));
+        return {};
+    }
+
+    /*!
+     * Pop a previously pushed affinity off the stack and restore it.
+     *
+     * Returns ENODATA (mapped to cpuaff::affinity_errc::not_supported's
+     * sibling — std::errc::no_message_available) when the stack is
+     * empty; otherwise the error code from try_set_affinity().
+     */
+    [[nodiscard]] inline cpuaff::expected< void, std::error_code >
+    try_pop_affinity()
+    {
+        if (affinity_stack_.empty())
+        {
+            return cpuaff::unexpected< std::error_code >(
+                std::make_error_code(std::errc::no_message_available));
+        }
+        cpu_set_type cpus = affinity_stack_.top();
+        affinity_stack_.pop();
+        return affinity_manager_.try_set_affinity(cpus);
+    }
+
+    /*!
+     * Get the affinity of the calling thread.
+     */
+    [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
+    try_get_affinity()
+    {
+        return affinity_manager_.try_get_affinity();
+    }
+
+    /*!
+     * Set the affinity of the calling thread.
+     */
+    [[nodiscard]] inline cpuaff::expected< void, std::error_code >
+    try_set_affinity(const cpu_set_type &cpus)
+    {
+        return affinity_manager_.try_set_affinity(cpus);
     }
 
    private:

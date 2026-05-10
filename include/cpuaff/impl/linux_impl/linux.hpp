@@ -31,12 +31,15 @@
 #pragma once
 
 #include "../../cpu_spec.hpp"
+#include "../../error.hpp"
 
 #include <map>
 #include <set>
+#include <system_error>
 #include <vector>
 
 #include <libgen.h>
+#include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
 
@@ -145,15 +148,34 @@ inline long detect_ncpus_for_affinity()
 
 struct get_affinity
 {
-    inline bool operator()(std::set< cpu_identifier_wrapper > &cpus)
+    // Legacy bool API (calling thread). Preserved verbatim from
+    // alpha.3 for source-compat with v1.x consumers; new code should
+    // prefer query() below.
+    inline bool operator()(std::set< cpu_identifier_wrapper > &cpus) const
+    {
+        return !query(cpus);
+    }
+
+    // New error-returning API. cpus is populated on success and left
+    // unchanged on failure. Returns std::error_code{} on success.
+    inline std::error_code query(
+        std::set< cpu_identifier_wrapper > &cpus) const noexcept
     {
         const long ncpus = detect_ncpus_for_affinity();
         const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
         cpu_set_t *mask = CPU_ALLOC(ncpus);
-        if (mask == nullptr) return false;
+        if (mask == nullptr)
+        {
+            return cpuaff::make_error_code(
+                cpuaff::affinity_errc::out_of_memory);
+        }
 
-        const bool ok = (sched_getaffinity(0, mask_size, mask) == 0);
-        if (ok)
+        std::error_code ec;
+        if (sched_getaffinity(0, mask_size, mask) != 0)
+        {
+            ec = cpuaff::error_from_errno(errno);
+        }
+        else
         {
             for (long i = 0; i < ncpus; ++i)
             {
@@ -165,37 +187,128 @@ struct get_affinity
             }
         }
         CPU_FREE(mask);
-        return ok;
+        return ec;
+    }
+
+    // Same as query() but for the given pthread_t (uses
+    // pthread_getaffinity_np instead of sched_getaffinity).
+    inline std::error_code query(
+        pthread_t t,
+        std::set< cpu_identifier_wrapper > &cpus) const noexcept
+    {
+        const long ncpus = detect_ncpus_for_affinity();
+        const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
+        cpu_set_t *mask = CPU_ALLOC(ncpus);
+        if (mask == nullptr)
+        {
+            return cpuaff::make_error_code(
+                cpuaff::affinity_errc::out_of_memory);
+        }
+
+        std::error_code ec;
+        const int rc = pthread_getaffinity_np(t, mask_size, mask);
+        if (rc != 0)
+        {
+            ec = cpuaff::error_from_errno(rc);
+        }
+        else
+        {
+            for (long i = 0; i < ncpus; ++i)
+            {
+                if (CPU_ISSET_S(i, mask_size, mask))
+                {
+                    cpus.insert(cpu_identifier_wrapper(
+                        static_cast< cpu_identifier_type >(i)));
+                }
+            }
+        }
+        CPU_FREE(mask);
+        return ec;
     }
 };
 
 struct set_affinity
 {
-    inline bool operator()(const std::set< cpu_identifier_wrapper > &cpus)
+    // Legacy bool API (calling thread). Preserved verbatim from
+    // alpha.3 for source-compat with v1.x consumers; new code should
+    // prefer apply() below.
+    inline bool operator()(
+        const std::set< cpu_identifier_wrapper > &cpus) const
+    {
+        return !apply(cpus);
+    }
+
+    // New error-returning API. Returns std::error_code{} on success.
+    inline std::error_code apply(
+        const std::set< cpu_identifier_wrapper > &cpus) const noexcept
+    {
+        cpu_set_t *mask = nullptr;
+        size_t mask_size = 0;
+        const std::error_code alloc_ec = build_mask(cpus, mask, mask_size);
+        if (alloc_ec) return alloc_ec;
+
+        std::error_code ec;
+        if (sched_setaffinity(0, mask_size, mask) != 0)
+        {
+            ec = cpuaff::error_from_errno(errno);
+        }
+        CPU_FREE(mask);
+        return ec;
+    }
+
+    // Same as apply() but for the given pthread_t (uses
+    // pthread_setaffinity_np instead of sched_setaffinity).
+    inline std::error_code apply(
+        pthread_t t,
+        const std::set< cpu_identifier_wrapper > &cpus) const noexcept
+    {
+        cpu_set_t *mask = nullptr;
+        size_t mask_size = 0;
+        const std::error_code alloc_ec = build_mask(cpus, mask, mask_size);
+        if (alloc_ec) return alloc_ec;
+
+        std::error_code ec;
+        const int rc = pthread_setaffinity_np(t, mask_size, mask);
+        if (rc != 0)
+        {
+            ec = cpuaff::error_from_errno(rc);
+        }
+        CPU_FREE(mask);
+        return ec;
+    }
+
+   private:
+    // Allocate a dynamic cpu_set_t sized to fit every cpu id in `cpus`,
+    // populated and ready to hand to sched_/pthread_setaffinity. On
+    // success returns ec{} and assigns `mask` and `mask_size`; caller
+    // owns the CPU_FREE. On failure returns the error and `mask`
+    // is left nullptr.
+    static inline std::error_code build_mask(
+        const std::set< cpu_identifier_wrapper > &cpus,
+        cpu_set_t *&mask,
+        size_t &mask_size) noexcept
     {
         long ncpus = detect_ncpus_for_affinity();
-        // The cpu set may legitimately reference CPU ids beyond
-        // _SC_NPROCESSORS_CONF (e.g. hot-plug setups); grow the
-        // allocation to fit the largest id we're being asked to set.
         for (const auto &w : cpus)
         {
             const long id = static_cast< long >(w.get());
             if (id >= ncpus) ncpus = id + 1;
         }
 
-        const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
-        cpu_set_t *mask = CPU_ALLOC(ncpus);
-        if (mask == nullptr) return false;
+        mask_size = CPU_ALLOC_SIZE(ncpus);
+        mask = CPU_ALLOC(ncpus);
+        if (mask == nullptr)
+        {
+            return cpuaff::make_error_code(
+                cpuaff::affinity_errc::out_of_memory);
+        }
 
         CPU_ZERO_S(mask_size, mask);
         for (const auto &w : cpus)
         {
             CPU_SET_S(static_cast< long >(w.get()), mask_size, mask);
         }
-
-        const bool ok = (sched_setaffinity(0, mask_size, mask) == 0);
-        CPU_FREE(mask);
-        return ok;
+        return {};
     }
 };
 
