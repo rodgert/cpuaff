@@ -48,6 +48,58 @@ jobs:
           test -f ${{ runner.temp }}/cpuaff-install/lib/pkgconfig/cpuaff.pc \
             || test -f ${{ runner.temp }}/cpuaff-install/lib64/pkgconfig/cpuaff.pc
 
+      # Consume the installed package the way a real downstream
+      # project would. This catches regressions in cpuaffConfig.cmake.in
+      # (missing find_dependency) and cpuaff.pc.in (missing Libs:)
+      # that the file-existence smoke test above can't catch — the
+      # rc.1 review found exactly that class of bug.
+      - name: Verify find_package(cpuaff CONFIG) from a downstream project
+        env:
+          CC:  ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: |
+          mkdir -p ${{ runner.temp }}/consumer
+          cat > ${{ runner.temp }}/consumer/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.21)
+          project(cpuaff_consumer LANGUAGES CXX)
+          find_package(cpuaff 2.0 CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE cpuaff::cpuaff)
+          EOF
+          cat > ${{ runner.temp }}/consumer/main.cpp <<'EOF'
+          #include <cpuaff/cpuaff.hpp>
+          int main() {
+              cpuaff::affinity_manager m;
+              if (!m.has_cpus()) return 1;
+              auto r = m.try_get_affinity();
+              return r.has_value() ? 0 : 1;
+          }
+          EOF
+          cmake -S ${{ runner.temp }}/consumer \
+                -B ${{ runner.temp }}/consumer/build \
+                -G Ninja \
+                -DCMAKE_PREFIX_PATH=${{ runner.temp }}/cpuaff-install
+          cmake --build ${{ runner.temp }}/consumer/build
+          ${{ runner.temp }}/consumer/build/consumer
+
+      - name: Verify pkg-config consumption
+        env:
+          CXX: ${{ matrix.compiler.cxx }}
+        run: |
+          # Accept both lib/pkgconfig and lib64/pkgconfig layouts.
+          export PKG_CONFIG_PATH=${{ runner.temp }}/cpuaff-install/lib/pkgconfig:${{ runner.temp }}/cpuaff-install/lib64/pkgconfig
+          pkg-config --modversion cpuaff
+          pkg-config --cflags cpuaff
+          pkg-config --libs cpuaff
+          # Compile the same consumer source via pkg-config flags
+          # (no CMake involvement) and run it.
+          ${CXX} -std=c++20 \
+                 $(pkg-config --cflags cpuaff) \
+                 ${{ runner.temp }}/consumer/main.cpp \
+                 $(pkg-config --libs cpuaff) \
+                 -o ${{ runner.temp }}/pkgconfig_consumer
+          ${{ runner.temp }}/pkgconfig_consumer
+
   docs:
     runs-on: ubuntu-24.04
     steps:

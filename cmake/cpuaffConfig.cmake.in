@@ -1,5 +1,12 @@
 @PACKAGE_INIT@
 
+# Threads::Threads is propagated on the cpuaff INTERFACE target
+# (CMakeLists.txt: target_link_libraries(cpuaff INTERFACE Threads::Threads));
+# the consumer must find_dependency it before the import.
+include(CMakeFindDependencyMacro)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_dependency(Threads)
+
 include("${CMAKE_CURRENT_LIST_DIR}/cpuaffTargets.cmake")
 
 check_required_components(cpuaff)

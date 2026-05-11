@@ -20,6 +20,91 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 - Cutover: fast-forward `v2` → `master`, tag `v2.0.0-htaa.1`.
 
+## [2.0.0-htaa.rc.2] — 2026-05-10
+
+rc.1 hotfix milestone. Addresses real findings from the rc.1
+adversarial review, two of which were release-blockers for the
+public-facing `find_package(cpuaff CONFIG)` flow.
+
+### Fixed (P1 blockers)
+
+- `cmake/cpuaffConfig.cmake.in` now calls `find_dependency(Threads)`
+  before importing `cpuaffTargets.cmake`. rc.1 added
+  `target_link_libraries(cpuaff INTERFACE Threads::Threads)` on the
+  exported target but didn't pull `Threads` in on the consumer
+  side, so downstream `find_package(cpuaff CONFIG)` errored out
+  with "Threads::Threads not found" and the link line tried
+  `-lThreads::Threads`. Reproduced locally and end-to-end verified
+  via a synthetic consumer project. The rc.1 CHANGELOG's claim
+  "consumers no longer need to link pthread separately" is now
+  actually true.
+- `cpuaff.pc.in` now emits `Libs: -pthread`. pkg-config consumers
+  on older glibc / musl / etc. need the explicit link flag —
+  modern glibc folds pthread into libc but that's not portable.
+
+### Added — CI (P1)
+
+- New `Verify find_package(cpuaff CONFIG) from a downstream project`
+  step: generates a stock CMake consumer project with a `main.cpp`
+  exercising the `try_*` API, points `CMAKE_PREFIX_PATH` at the
+  install tree, configures/builds/runs. Each matrix entry runs
+  this against its compiler. The previous file-existence smoke
+  test could not catch the cmake config / pc-file regressions
+  that rc.1 shipped with; this step would have failed CI on rc.1.
+- New `Verify pkg-config consumption` step: queries the installed
+  `.pc` via `pkg-config --cflags --libs`, compiles the same
+  consumer source directly via `$CXX` + pkg-config flags (no CMake
+  involvement), and runs the resulting binary.
+
+### Added — tests (P2)
+
+- `try_pop_affinity` empty-stack SECTION on the affinity_stack
+  TEST_CASE. Builds the call path for
+  `affinity_errc::stack_empty` (10001); previously the enum value
+  was tested only in isolation in the `error_category` TEST_CASE.
+- `try_get_available_cpus(pthread_t)` SECTION extended to actually
+  exercise the intersection. rc.1's version was vacuous
+  (`!empty() && size() <= all_cpus.size()` is true for any
+  non-trivial topology); now narrows the worker's affinity to a
+  single cpu and verifies the pthread_t accessor reports exactly
+  that cpu.
+- `round_robin_invariant` first SECTION now `WARN`s when the test
+  host has only one distinct `processing_unit` value (typical of
+  2-vCPU GitHub-hosted runners), since the bucket-ordering
+  invariant is vacuously satisfied on single-PU hardware. Real
+  verification requires multi-PU hardware.
+
+### Changed — docs (P2)
+
+- `CMakeLists.txt` doxygen target: set
+  `DOXYGEN_ENABLE_PREPROCESSING` + `DOXYGEN_MACRO_EXPANSION` +
+  `DOXYGEN_PREDEFINED "CPUAFF_HAS_STD_EXPECTED=0"`. Pins doxygen
+  to the polyfill branch in `detail/expected.hpp` so it documents
+  the polyfill classes rather than emitting redefinition warnings
+  on the dual-branch under `EXTRACT_ALL`. The alias path is a
+  trivial `using` chain to `std::expected` whose canonical docs
+  live at cppreference.
+
+### Fixed (P3 cosmetic)
+
+- `basic_affinity_manager.hpp` lines 80/95: duplicate
+  `   public:` access-specifier removed (leftover from the
+  original Daniel-era layout; rc.1 cleaned a similar one near
+  line 672 but missed this pair).
+- `error_category` test's "unknown" assertion (line 743) was a
+  no-op — the string `"unknown cpuaff::affinity error"` never
+  appeared in `error.hpp`. Now compares against
+  `std::generic_category().message(EFAULT)` so it actually
+  verifies the message() fallthrough semantics.
+
+### Deliberately not addressed
+
+- pthread_t ESRCH / EINVAL error-path tests. The reliable way to
+  trigger ESRCH is to use a stale `pthread_t` after the LWP has
+  been reaped, but POSIX says that's UB. Tracked for a future
+  cgroup- or namespace-driven integration test where the failure
+  can be triggered safely; not blocking v2.0.0 final.
+
 ## [2.0.0-htaa.rc.1] — 2026-05-10
 
 Phase 5: test + CI hardening, plus three trivial doc/source fixes
@@ -432,7 +517,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.1...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.2...v2
+[2.0.0-htaa.rc.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.1...v2.0.0-htaa.rc.2
 [2.0.0-htaa.rc.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.2...v2.0.0-htaa.rc.1
 [2.0.0-htaa.beta.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2.0.0-htaa.beta.2
 [2.0.0-htaa.beta.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.alpha.3...v2.0.0-htaa.beta.1

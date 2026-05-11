@@ -124,6 +124,19 @@ if(PROJECT_IS_TOP_LEVEL)
         set(DOXYGEN_WARN_AS_ERROR FAIL_ON_WARNINGS)
         set(DOXYGEN_HAVE_DOT NO)
 
+        # detail/expected.hpp has two mutually-exclusive code branches
+        # (alias-to-std::expected vs in-tree polyfill). Pin doxygen to
+        # the polyfill branch by predefining CPUAFF_HAS_STD_EXPECTED=0,
+        # so the polyfill classes (expected / unexpected /
+        # bad_expected_access) are what gets documented — the alias
+        # branch is a trivial `using` chain to <expected> which is
+        # documented at cppreference. Without this pin doxygen would
+        # see both branches under EXTRACT_ALL and emit redefinition
+        # warnings, which FAIL_ON_WARNINGS would then surface.
+        set(DOXYGEN_ENABLE_PREPROCESSING YES)
+        set(DOXYGEN_MACRO_EXPANSION YES)
+        set(DOXYGEN_PREDEFINED "CPUAFF_HAS_STD_EXPECTED=0")
+
         doxygen_add_docs(cpuaff_docs
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             COMMENT "Generating cpuaff API documentation")

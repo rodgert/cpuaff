@@ -300,6 +300,23 @@ TEST_CASE("affinity_stack", "[affinity_stack]")
             }
         }
     }
+
+    SECTION("try_pop_affinity on empty stack returns stack_empty")
+    {
+        // Fresh stack, never pushed — try_pop_affinity should
+        // surface affinity_errc::stack_empty rather than UB-ing on
+        // a top()/pop() against an empty std::stack.
+        cpuaff::affinity_manager manager;
+        REQUIRE(manager.has_cpus());
+        cpuaff::affinity_stack stack(manager);
+
+        auto result = stack.try_pop_affinity();
+        REQUIRE_FALSE(result.has_value());
+        REQUIRE(result.error() == cpuaff::affinity_errc::stack_empty);
+        // Also reachable via the std::error_code construction path:
+        REQUIRE(result.error() == std::error_code(
+                                      cpuaff::affinity_errc::stack_empty));
+    }
 }
 
 TEST_CASE("round_robin_allocator", "[round_robin_allocator]")
@@ -525,6 +542,16 @@ TEST_CASE("round_robin_invariant", "[round_robin_allocator]")
     {
         cpuaff::round_robin_allocator allocator(all_cpus);
 
+        if (pu_count.size() < 2)
+        {
+            WARN("Test host has only "
+                 << pu_count.size()
+                 << " distinct processing_unit value(s); the "
+                    "bucket-ordering invariant is vacuously satisfied. "
+                    "Run on multi-PU hardware to exercise the actual "
+                    "invariant.");
+        }
+
         // The expected order: lowest processing_unit_type first
         // (std::map orders by key), all of those cpus, then next pu.
         auto pu_iter = pu_count.begin();
@@ -746,11 +773,13 @@ TEST_CASE("error_category", "[error]")
             "std::generic_category for unrecognised values")
     {
         // EFAULT (14) is a real errno but not in cpuaff::affinity_errc.
-        // The message() should still produce a real string via the
-        // generic_category fallback.
+        // The message() should match what std::generic_category would
+        // produce for the same value — verifying the fallthrough path
+        // in affinity_category_impl::message(), not just that the
+        // result is non-empty.
         const auto msg = cpuaff::affinity_category().message(EFAULT);
         REQUIRE(!msg.empty());
-        REQUIRE(msg != "unknown cpuaff::affinity error");
+        REQUIRE(msg == std::generic_category().message(EFAULT));
     }
 
     SECTION("default_error_condition splits at 10000")
@@ -887,10 +916,36 @@ TEST_CASE("try_get_available_cpus", "[affinity_manager][cgroup]")
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        auto avail = manager.try_get_available_cpus(worker.native_handle());
-        REQUIRE(avail.has_value());
-        REQUIRE(!avail->empty());
-        REQUIRE(avail->size() <= all_cpus.size());
+        pthread_t worker_handle = worker.native_handle();
+
+        // Baseline: unrestricted worker should see the full topology
+        // through try_get_available_cpus(pthread_t).
+        {
+            auto avail = manager.try_get_available_cpus(worker_handle);
+            REQUIRE(avail.has_value());
+            REQUIRE(avail->size() == all_cpus.size());
+        }
+
+        // Narrow the worker's affinity to a single cpu and verify
+        // the pthread_t available-cpus accessor reports exactly that
+        // cpu. Without this step the previous baseline-only test was
+        // tautologically true for any non-trivial topology.
+        cpuaff::cpu_set restricted;
+        restricted.insert(first_cpu);
+        REQUIRE(manager.try_set_affinity(worker_handle, restricted)
+                    .has_value());
+
+        {
+            auto avail = manager.try_get_available_cpus(worker_handle);
+            REQUIRE(avail.has_value());
+            REQUIRE(avail->size() == 1);
+            REQUIRE(*avail->begin() == first_cpu);
+        }
+
+        // Restore worker before releasing so we don't leave a
+        // narrowed mask on a thread about to exit.
+        REQUIRE(manager.try_set_affinity(worker_handle, all_cpus)
+                    .has_value());
 
         {
             std::lock_guard< std::mutex > lock(block.m);

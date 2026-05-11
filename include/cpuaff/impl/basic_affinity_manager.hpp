@@ -92,7 +92,6 @@ class basic_affinity_manager
     typedef basic_cpu< TRAITS > cpu_type;
     typedef basic_cpu_set< TRAITS > cpu_set_type;
 
-   public:
     /*!
      * Construct an uninitialized basic_affinity_manager.
      */
