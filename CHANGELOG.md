@@ -20,6 +20,59 @@ branch. Each phase ships as a `v2.0.0-htaa.alpha.*` / `beta.*` /
 
 - Cutover: fast-forward `v2` → `master`, tag `v2.0.0-htaa.1`.
 
+## [2.0.0-htaa.rc.3] — 2026-05-12
+
+rc.2 hotfix. rc.1 and rc.2 both shipped with two CI failures
+(`format` workflow's clang-format gate; `ci` workflow's `docs` job)
+that I'd missed because I'd been claiming "verified locally" without
+actually checking GitHub Actions status. The build matrix
+(gcc-12/13/14 + clang-17/18) was passing all along, including the
+rc.2 find_package + pkg-config consumer-verify steps; it was the
+format and docs gates that had been red.
+
+### Fixed (CI)
+
+- `.github/workflows/format.yml`: clang-format pinned to version 21
+  via apt.llvm.org. Was pinned to clang-format-17, but local Fedora
+  ships clang-format-21, and the agent doxygen pass introduced
+  formatting that 17 and 21 disagree on. Matching versions
+  eliminates the drift.
+- All sources reformatted with clang-format-21 (16 files, mostly
+  small drift: line-wrap points on long doxygen `\param` lines,
+  short `if (x) return false;` bodies on a separate line, etc.).
+  No semantic changes.
+
+### Fixed (doxygen)
+
+- `cpuaff.hpp:37`: `\ref cpu_spec` → `\ref cpuaff::cpu_spec`. The
+  unqualified form couldn't be resolved.
+- `detail/expected.hpp:12`: removed an in-flight `std::optional`
+  reference that doxygen tried to resolve as an explicit link.
+  Replaced with a backtick-quoted form.
+- `error.hpp:64,82-84`: the `\ref` to qualified-signature
+  `basic_affinity_manager::try_*(pthread_t,const T&) const` forms
+  were resolution-fragile (the reviewer flagged exactly this in
+  the rc.1 review). Replaced with backtick-quoted prose
+  references; the API is still discoverable via class-level docs.
+- `basic_cpu.hpp:71`: pre-existing typo from Dillon-era code —
+  `\param the numa node identifier` (where `the` was parsed as
+  the parameter name and `numa` was therefore not documented).
+  Fixed to `\param numa the numa node identifier`.
+
+### Verified
+
+- Local cmake build clean, ctest 1/1 pass, leakcheck clean.
+- The doxygen target is pending CI verification (doxygen still
+  not installed locally — Fedora `dnf` requires user's sudo).
+
+### Process
+
+- `feedback_push_gate_at_phase_boundaries.md` memory updated:
+  pushing is no longer the end of a phase. After push, verify
+  CI status (`gh run list / gh run view`) before declaring the
+  phase done. Local build green is not equivalent to CI green —
+  CI may use different toolchain versions or stricter flags.
+
 ## [2.0.0-htaa.rc.2] — 2026-05-10
 
 rc.1 hotfix milestone. Addresses real findings from the rc.1
@@ -517,7 +570,8 @@ The fork's divergence baseline. Last release on the 1.x line.
 - `linux_impl/linux.hpp`: initialize `cpu_identifier_wrapper::id_(-1)`
   to silence an uninitialized-member warning. (`5694f09`)
 
-[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.2...v2
+[Unreleased]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.3...v2
+[2.0.0-htaa.rc.3]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.2...v2.0.0-htaa.rc.3
 [2.0.0-htaa.rc.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.rc.1...v2.0.0-htaa.rc.2
 [2.0.0-htaa.rc.1]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.2...v2.0.0-htaa.rc.1
 [2.0.0-htaa.beta.2]: https://github.com/rodgert/cpuaff/compare/v2.0.0-htaa.beta.1...v2.0.0-htaa.beta.2

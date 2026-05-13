@@ -99,7 +99,8 @@ class basic_affinity_stack
     inline bool push_affinity()
     {
         auto current = affinity_manager_.try_get_affinity();
-        if (!current) return false;
+        if (!current)
+            return false;
         affinity_stack_.push(*std::move(current));
         return true;
     }
@@ -118,7 +119,8 @@ class basic_affinity_stack
     [[deprecated("use try_pop_affinity()")]]
     inline bool pop_affinity()
     {
-        if (affinity_stack_.empty()) return false;
+        if (affinity_stack_.empty())
+            return false;
         cpu_set_type cpus = affinity_stack_.top();
         affinity_stack_.pop();
         return affinity_manager_.try_set_affinity(cpus).has_value();
@@ -137,7 +139,8 @@ class basic_affinity_stack
     inline bool get_affinity(cpu_set_type &cpus)
     {
         auto result = affinity_manager_.try_get_affinity();
-        if (!result) return false;
+        if (!result)
+            return false;
         cpus = *std::move(result);
         return true;
     }
@@ -172,7 +175,7 @@ class basic_affinity_stack
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_push_affinity()
+        try_push_affinity()
     {
         auto current = affinity_manager_.try_get_affinity();
         if (!current)
@@ -196,7 +199,7 @@ class basic_affinity_stack
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_pop_affinity()
+        try_pop_affinity()
     {
         if (affinity_stack_.empty())
         {
@@ -219,7 +222,7 @@ class basic_affinity_stack
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_affinity()
+        try_get_affinity()
     {
         return affinity_manager_.try_get_affinity();
     }
@@ -236,7 +239,7 @@ class basic_affinity_stack
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_set_affinity(const cpu_set_type &cpus)
+        try_set_affinity(const cpu_set_type &cpus)
     {
         return affinity_manager_.try_set_affinity(cpus);
     }

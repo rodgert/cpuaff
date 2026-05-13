@@ -62,8 +62,8 @@ int main(int argc, char *argv[])
 
     if (auto r = manager.try_set_affinity(core_0); !r)
     {
-        std::cerr << "cpuaff: try_set_affinity failed: "
-                  << r.error().message() << std::endl;
+        std::cerr << "cpuaff: try_set_affinity failed: " << r.error().message()
+                  << std::endl;
         return -1;
     }
 

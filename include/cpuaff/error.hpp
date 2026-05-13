@@ -61,7 +61,7 @@ enum class affinity_errc
      * Most commonly seen under cgroup / cpuset restriction (systemd
      * `CPUAffinity=`, Docker `--cpuset-cpus`) when the requested mask
      * includes CPUs the cgroup forbids. See
-     * \ref basic_affinity_manager::try_get_available_cpus for the
+     * `try_get_available_cpus()` on `cpuaff::affinity_manager` for the
      * cgroup-aware accessor.
      */
     invalid_argument = EINVAL,
@@ -78,12 +78,11 @@ enum class affinity_errc
     /*!
      * \brief The target thread no longer exists (errno \c ESRCH).
      *
-     * Surfaces from the pthread_t-taking overloads
-     * (\ref basic_affinity_manager::try_set_affinity(pthread_t,const cpu_set_type&) const "try_set_affinity(pthread_t, ...)" /
-     * \ref basic_affinity_manager::try_get_affinity(pthread_t) const "try_get_affinity(pthread_t)" /
-     * \ref basic_affinity_manager::try_pin(pthread_t,const cpu_type&) const "try_pin(pthread_t, ...)")
-     * when the target has exited between when the caller obtained the
-     * \c pthread_t and when the syscall fires.
+     * Surfaces from the pthread_t-taking overloads on
+     * `cpuaff::affinity_manager` (`try_set_affinity(pthread_t, ...)`,
+     * `try_get_affinity(pthread_t)`, `try_pin(pthread_t, ...)`) when
+     * the target thread has exited between when the caller obtained
+     * the `pthread_t` and when the syscall fires.
      */
     no_such_thread = ESRCH,
 
@@ -178,8 +177,7 @@ class affinity_category_impl : public std::error_category
      * `EINVAL`-tagged cpuaff error. Cpuaff-internal values (≥ 10000)
      * stay in our category.
      */
-    std::error_condition default_error_condition(
-        int ev) const noexcept override
+    std::error_condition default_error_condition(int ev) const noexcept override
     {
         if (ev >= 10000)
         {

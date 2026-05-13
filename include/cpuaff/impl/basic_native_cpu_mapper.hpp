@@ -125,7 +125,8 @@ class basic_native_cpu_mapper
      * and record the (native, cpu) pair. Restores the original affinity at
      * the end. May fail or hang if pinning isn't possible.
      *
-     * \param affinity_manager the affinity_manager to load configured cpus from.
+     * \param affinity_manager the affinity_manager to load configured cpus
+     * from.
      * \return true if initialization succeeds, false otherwise.
      *
      * \warning On backends without \c has_identity_native_mapping
@@ -135,7 +136,8 @@ class basic_native_cpu_mapper
     inline bool initialize(const affinity_manager_type &affinity_manager)
     {
         cpu_set_type cpus;
-        if (!affinity_manager.get_cpus(cpus)) return false;
+        if (!affinity_manager.get_cpus(cpus))
+            return false;
 
         if constexpr (detail::has_identity_native_mapping_v< TRAITS >::value)
         {
@@ -158,7 +160,8 @@ class basic_native_cpu_mapper
             bool retval = true;
 
             auto orig_result = affinity_manager.try_get_affinity();
-            if (!orig_result) return false;
+            if (!orig_result)
+                return false;
             cpu_set_type orig = *std::move(orig_result);
 
             for (const auto &cpu : cpus)

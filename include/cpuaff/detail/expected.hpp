@@ -9,9 +9,9 @@
  *
  * Aliases \c std::expected when the implementation supports it
  * (`__cpp_lib_expected >= 202202L`, libstdc++ ≥ 12 / libc++ ≥ 16 in
- * C++23 mode); otherwise provides a tiny std::variant-/std::optional-
- * backed polyfill that covers exactly the surface cpuaff uses
- * internally:
+ * C++23 mode); otherwise provides a tiny `std::variant`- /
+ * `std::optional`-backed polyfill that covers exactly the surface
+ * cpuaff uses internally:
  *
  *   - `expected<T, E>::has_value()` / `operator bool()`
  *   - `expected<T, E>::value()` / `operator*()` / `operator->()`
@@ -102,9 +102,9 @@ class bad_expected_access : public std::exception
         return "bad cpuaff::expected access";
     }
 
-    const E &error() const & noexcept { return error_; }  //!< Error accessor.
-    E &error() & noexcept { return error_; }              //!< Error accessor.
-    E &&error() && noexcept { return std::move(error_); } //!< Error accessor.
+    const E &error() const & noexcept { return error_; }   //!< Error accessor.
+    E &error() & noexcept { return error_; }               //!< Error accessor.
+    E &&error() && noexcept { return std::move(error_); }  //!< Error accessor.
 
    private:
     E error_;
@@ -157,8 +157,7 @@ class [[nodiscard]] expected
     /*! \brief Construct holding a copy of \p v. */
     constexpr expected(const T &v) : storage_(std::in_place_index< 0 >, v) {}
     /*! \brief Construct holding a moved \p v. */
-    constexpr expected(T &&v)
-        : storage_(std::in_place_index< 0 >, std::move(v))
+    constexpr expected(T &&v) : storage_(std::in_place_index< 0 >, std::move(v))
     {
     }
     /*! \brief Construct holding the error from \p u. */
@@ -208,10 +207,7 @@ class [[nodiscard]] expected
      * throwing variant, or check \ref has_value() / \c operator \c bool
      * first.
      */
-    constexpr T &operator*() & noexcept
-    {
-        return *std::get_if< 0 >(&storage_);
-    }
+    constexpr T &operator*() & noexcept { return *std::get_if< 0 >(&storage_); }
     constexpr const T &operator*() const & noexcept
     {
         return *std::get_if< 0 >(&storage_);
@@ -275,7 +271,8 @@ class [[nodiscard]] expected< void, E >
      */
     constexpr void value() const &
     {
-        if (!has_value()) throw bad_expected_access< E >(*error_);
+        if (!has_value())
+            throw bad_expected_access< E >(*error_);
     }
 
     /*! \brief Error accessor. UB if has_value(). */

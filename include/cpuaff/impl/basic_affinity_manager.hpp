@@ -354,8 +354,9 @@ class basic_affinity_manager
      * cpuaff::expected<cpu_set_type, std::error_code> with errno-tagged
      * diagnostics on failure. Will be removed in v3.
      */
-    [[deprecated("use try_get_affinity() — returns cpuaff::expected with "
-                 "errno diagnostics")]]
+    [[deprecated(
+        "use try_get_affinity() — returns cpuaff::expected with "
+        "errno diagnostics")]]
     inline bool get_affinity(cpu_set_type &cpus) const
     {
         cpus.clear();
@@ -391,8 +392,9 @@ class basic_affinity_manager
      * errno (EINVAL / EPERM / ESRCH) as a cpuaff::affinity_category
      * std::error_code instead of opaque false. Will be removed in v3.
      */
-    [[deprecated("use try_set_affinity() — returns cpuaff::expected with "
-                 "errno diagnostics")]]
+    [[deprecated(
+        "use try_set_affinity() — returns cpuaff::expected with "
+        "errno diagnostics")]]
     inline bool set_affinity(const cpu_set_type &cpus) const
     {
         std::set< cpu_identifier_wrapper_type > ids;
@@ -417,8 +419,9 @@ class basic_affinity_manager
      * \deprecated Prefer try_pin() — returns cpuaff::expected with
      * errno diagnostics. Will be removed in v3.
      */
-    [[deprecated("use try_pin() — returns cpuaff::expected with errno "
-                 "diagnostics")]]
+    [[deprecated(
+        "use try_pin() — returns cpuaff::expected with errno "
+        "diagnostics")]]
     inline bool pin(const cpu_type &cpu)
     {
         cpu_set_type cpus;
@@ -457,7 +460,7 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_affinity() const
+        try_get_affinity() const
     {
         return try_get_affinity_impl(typename TRAITS::get_affinity_type{});
     }
@@ -474,12 +477,13 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_affinity(pthread_t t) const
+        try_get_affinity(pthread_t t) const
     {
         std::set< cpu_identifier_wrapper_type > ids;
         const std::error_code ec =
             typename TRAITS::get_affinity_type{}.query(t, ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return cpus_from_ids(ids);
     }
 
@@ -495,13 +499,14 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_set_affinity(const cpu_set_type &cpus) const noexcept
+        try_set_affinity(const cpu_set_type &cpus) const noexcept
     {
         std::set< cpu_identifier_wrapper_type > ids;
         for (const auto &c : cpus) ids.insert(c.id());
         const std::error_code ec =
             typename TRAITS::set_affinity_type{}.apply(ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return {};
     }
 
@@ -519,14 +524,14 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_set_affinity(pthread_t t,
-                     const cpu_set_type &cpus) const noexcept
+        try_set_affinity(pthread_t t, const cpu_set_type &cpus) const noexcept
     {
         std::set< cpu_identifier_wrapper_type > ids;
         for (const auto &c : cpus) ids.insert(c.id());
         const std::error_code ec =
             typename TRAITS::set_affinity_type{}.apply(t, ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return {};
     }
 
@@ -539,14 +544,15 @@ class basic_affinity_manager
      *
      * \since v2.0.0-htaa.beta.1
      */
-    [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_pin(const cpu_type &cpu) const noexcept
+    [[nodiscard]] inline cpuaff::expected< void, std::error_code > try_pin(
+        const cpu_type &cpu) const noexcept
     {
         std::set< cpu_identifier_wrapper_type > ids;
         ids.insert(cpu.id());
         const std::error_code ec =
             typename TRAITS::set_affinity_type{}.apply(ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return {};
     }
 
@@ -561,14 +567,15 @@ class basic_affinity_manager
      *
      * \since v2.0.0-htaa.beta.1
      */
-    [[nodiscard]] inline cpuaff::expected< void, std::error_code >
-    try_pin(pthread_t t, const cpu_type &cpu) const noexcept
+    [[nodiscard]] inline cpuaff::expected< void, std::error_code > try_pin(
+        pthread_t t, const cpu_type &cpu) const noexcept
     {
         std::set< cpu_identifier_wrapper_type > ids;
         ids.insert(cpu.id());
         const std::error_code ec =
             typename TRAITS::set_affinity_type{}.apply(t, ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return {};
     }
 
@@ -597,7 +604,7 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_available_cpus() const
+        try_get_available_cpus() const
     {
         return intersect_topology_with(try_get_affinity());
     }
@@ -617,7 +624,7 @@ class basic_affinity_manager
      * \since v2.0.0-htaa.beta.2
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_available_cpus(pthread_t t) const
+        try_get_available_cpus(pthread_t t) const
     {
         return intersect_topology_with(try_get_affinity(t));
     }
@@ -629,11 +636,12 @@ class basic_affinity_manager
     // set and run it through cpus_from_ids().
     template < typename Functor >
     inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_get_affinity_impl(Functor &&fn) const
+        try_get_affinity_impl(Functor &&fn) const
     {
         std::set< cpu_identifier_wrapper_type > ids;
         const std::error_code ec = fn.query(ids);
-        if (ec) return cpuaff::unexpected< std::error_code >(ec);
+        if (ec)
+            return cpuaff::unexpected< std::error_code >(ec);
         return cpus_from_ids(ids);
     }
 
@@ -654,8 +662,8 @@ class basic_affinity_manager
     // intersect the configured topology with whatever affinity-query
     // result was passed in.
     inline cpuaff::expected< cpu_set_type, std::error_code >
-    intersect_topology_with(
-        cpuaff::expected< cpu_set_type, std::error_code > avail) const
+        intersect_topology_with(
+            cpuaff::expected< cpu_set_type, std::error_code > avail) const
     {
         if (!avail)
         {

@@ -85,9 +85,9 @@ inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
         // Trim only trailing newline / whitespace at the very end of the
         // input — sysfs cpulist files end with a '\n' that getline strips,
         // but be defensive.
-        while (!chunk.empty()
-               && (chunk.back() == '\n' || chunk.back() == '\r'
-                   || chunk.back() == ' ' || chunk.back() == '\t'))
+        while (!chunk.empty() &&
+               (chunk.back() == '\n' || chunk.back() == '\r' ||
+                chunk.back() == ' ' || chunk.back() == '\t'))
         {
             chunk.remove_suffix(1);
         }
@@ -122,9 +122,9 @@ inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
             auto [p2, ec2] =
                 std::from_chars(rhs.data(), rhs.data() + rhs.size(), end);
 
-            if (ec1 != std::errc{} || ec2 != std::errc{}
-                || p1 != lhs.data() + lhs.size()
-                || p2 != rhs.data() + rhs.size() || begin > end)
+            if (ec1 != std::errc{} || ec2 != std::errc{} ||
+                p1 != lhs.data() + lhs.size() ||
+                p2 != rhs.data() + rhs.size() || begin > end)
             {
                 result.clear();
                 return false;
@@ -136,7 +136,8 @@ inline bool read_int_set(std::set< int32_t > &result, std::string_view input)
             }
         }
 
-        if (comma == std::string_view::npos) break;
+        if (comma == std::string_view::npos)
+            break;
         input.remove_prefix(comma + 1);
     }
 

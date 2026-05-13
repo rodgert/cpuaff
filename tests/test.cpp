@@ -314,8 +314,8 @@ TEST_CASE("affinity_stack", "[affinity_stack]")
         REQUIRE_FALSE(result.has_value());
         REQUIRE(result.error() == cpuaff::affinity_errc::stack_empty);
         // Also reachable via the std::error_code construction path:
-        REQUIRE(result.error() == std::error_code(
-                                      cpuaff::affinity_errc::stack_empty));
+        REQUIRE(result.error() ==
+                std::error_code(cpuaff::affinity_errc::stack_empty));
     }
 }
 
@@ -397,15 +397,14 @@ TEST_CASE("native_cpu_mapper", "[native_cpu_mapper]")
 namespace
 {
 // Compile-time tripwires for the source-compat surface.
-static_assert(
-    std::is_same_v< decltype(std::declval< cpuaff::cpu_set & >()
-                             == std::declval< cpuaff::cpu_set & >()),
-                    bool >,
-    "cpuaff::cpu_set must support operator== returning bool");
+static_assert(std::is_same_v< decltype(std::declval< cpuaff::cpu_set & >() ==
+                                       std::declval< cpuaff::cpu_set & >()),
+                              bool >,
+              "cpuaff::cpu_set must support operator== returning bool");
 
 static_assert(
-    std::is_same_v< decltype(std::declval< cpuaff::cpu_set & >()
-                             <=> std::declval< cpuaff::cpu_set & >()),
+    std::is_same_v< decltype(std::declval< cpuaff::cpu_set & >() <=>
+                             std::declval< cpuaff::cpu_set & >()),
                     std::weak_ordering >,
     "cpuaff::cpu_set must support operator<=> returning weak_ordering");
 
@@ -598,8 +597,8 @@ TEST_CASE("round_robin_invariant", "[round_robin_allocator]")
         auto result = allocator.try_allocate();
         REQUIRE_FALSE(result.has_value());
         REQUIRE(result.error() == cpuaff::affinity_errc::allocator_empty);
-        REQUIRE(result.error() == std::error_code(
-                                      cpuaff::affinity_errc::allocator_empty));
+        REQUIRE(result.error() ==
+                std::error_code(cpuaff::affinity_errc::allocator_empty));
     }
 
     SECTION("try_allocate(count) on empty allocator returns empty set")
@@ -627,7 +626,7 @@ struct worker_block
     std::mutex m;
     std::condition_variable cv;
     bool released = false;
-    std::atomic< bool > started{ false };
+    std::atomic< bool > started{false};
 };
 
 inline void worker_main(worker_block &block)
@@ -688,15 +687,15 @@ TEST_CASE("pthread_t_overloads", "[affinity_manager][pthread]")
         REQUIRE(*observed->begin() == first_cpu);
     }
 
-    SECTION("try_get_available_cpus(pthread_t) returns the worker's mask "
-            "intersected with topology")
+    SECTION(
+        "try_get_available_cpus(pthread_t) returns the worker's mask "
+        "intersected with topology")
     {
         // Restore worker to all cpus so the intersection isn't a
         // single-cpu artifact.
         cpuaff::cpu_set all_cpus;
         REQUIRE(manager.get_cpus(all_cpus));
-        REQUIRE(manager.try_set_affinity(worker_handle, all_cpus)
-                    .has_value());
+        REQUIRE(manager.try_set_affinity(worker_handle, all_cpus).has_value());
 
         auto avail = manager.try_get_available_cpus(worker_handle);
         REQUIRE(avail.has_value());
@@ -769,8 +768,9 @@ TEST_CASE("error_category", "[error]")
         REQUIRE(ec == std::errc::operation_not_permitted);
     }
 
-    SECTION("affinity_category().message() falls through to "
-            "std::generic_category for unrecognised values")
+    SECTION(
+        "affinity_category().message() falls through to "
+        "std::generic_category for unrecognised values")
     {
         // EFAULT (14) is a real errno but not in cpuaff::affinity_errc.
         // The message() should match what std::generic_category would
@@ -787,14 +787,12 @@ TEST_CASE("error_category", "[error]")
         // Below 10000: maps to generic_category.
         REQUIRE(cpuaff::affinity_category()
                     .default_error_condition(EINVAL)
-                    .category()
-                == std::generic_category());
+                    .category() == std::generic_category());
 
         // At/above 10000: stays in cpuaff::affinity_category.
         REQUIRE(cpuaff::affinity_category()
                     .default_error_condition(10001)
-                    .category()
-                == cpuaff::affinity_category());
+                    .category() == cpuaff::affinity_category());
     }
 }
 
@@ -824,8 +822,8 @@ TEST_CASE("expected_polyfill", "[error][expected]")
 
     SECTION("expected<int, error_code> error path")
     {
-        value_expected v{ cpuaff::unexpected< error_t >(
-            cpuaff::make_error_code(cpuaff::affinity_errc::stack_empty)) };
+        value_expected v{cpuaff::unexpected< error_t >(
+            cpuaff::make_error_code(cpuaff::affinity_errc::stack_empty))};
         REQUIRE_FALSE(v.has_value());
         REQUIRE_FALSE(static_cast< bool >(v));
         REQUIRE(v.error() == cpuaff::affinity_errc::stack_empty);
@@ -842,9 +840,8 @@ TEST_CASE("expected_polyfill", "[error][expected]")
 
     SECTION("expected<void, error_code> error path throws on value()")
     {
-        void_expected v{ cpuaff::unexpected< error_t >(
-            cpuaff::make_error_code(
-                cpuaff::affinity_errc::allocator_empty)) };
+        void_expected v{cpuaff::unexpected< error_t >(
+            cpuaff::make_error_code(cpuaff::affinity_errc::allocator_empty))};
         REQUIRE_FALSE(v.has_value());
         REQUIRE(v.error() == cpuaff::affinity_errc::allocator_empty);
         REQUIRE_THROWS_AS(v.value(), cpuaff::bad_expected_access< error_t >);
@@ -932,8 +929,8 @@ TEST_CASE("try_get_available_cpus", "[affinity_manager][cgroup]")
         // tautologically true for any non-trivial topology.
         cpuaff::cpu_set restricted;
         restricted.insert(first_cpu);
-        REQUIRE(manager.try_set_affinity(worker_handle, restricted)
-                    .has_value());
+        REQUIRE(
+            manager.try_set_affinity(worker_handle, restricted).has_value());
 
         {
             auto avail = manager.try_get_available_cpus(worker_handle);
@@ -944,8 +941,7 @@ TEST_CASE("try_get_available_cpus", "[affinity_manager][cgroup]")
 
         // Restore worker before releasing so we don't leave a
         // narrowed mask on a thread about to exit.
-        REQUIRE(manager.try_set_affinity(worker_handle, all_cpus)
-                    .has_value());
+        REQUIRE(manager.try_set_affinity(worker_handle, all_cpus).has_value());
 
         {
             std::lock_guard< std::mutex > lock(block.m);

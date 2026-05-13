@@ -72,7 +72,7 @@ class basic_cpu
      *
      * \param spec the cpu_spec (socket, core, processing unit) for this cpu
      * \param id the native identifier for this cpu
-     * \param the numa node identifier for this cpu
+     * \param numa the numa node identifier for this cpu
      */
     inline basic_cpu(const cpu_spec &spec,
                      const cpu_identifier_wrapper_type &id,

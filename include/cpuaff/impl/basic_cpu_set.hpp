@@ -130,8 +130,8 @@ class basic_cpu_set : private std::set< basic_cpu< TRAITS > >
      *       private-inheritance scheme; this explicit overload
      *       takes \c basic_cpu_set& instead.
      */
-    void swap(basic_cpu_set &other) noexcept(noexcept(
-        std::declval< base_t & >().swap(std::declval< base_t & >())))
+    void swap(basic_cpu_set &other) noexcept(
+        noexcept(std::declval< base_t & >().swap(std::declval< base_t & >())))
     {
         base_t::swap(other);
     }
@@ -193,8 +193,8 @@ class basic_cpu_set : private std::set< basic_cpu< TRAITS > >
     friend bool operator==(const basic_cpu_set &a,
                            const basic_cpu_set &b) noexcept
     {
-        return static_cast< const base_t & >(a)
-            == static_cast< const base_t & >(b);
+        return static_cast< const base_t & >(a) ==
+               static_cast< const base_t & >(b);
     }
 
     /*!
@@ -212,8 +212,8 @@ class basic_cpu_set : private std::set< basic_cpu< TRAITS > >
     friend std::weak_ordering operator<=>(const basic_cpu_set &a,
                                           const basic_cpu_set &b) noexcept
     {
-        return static_cast< const base_t & >(a)
-            <=> static_cast< const base_t & >(b);
+        return static_cast< const base_t & >(a) <=>
+               static_cast< const base_t & >(b);
     }
 
     /*!
@@ -222,8 +222,8 @@ class basic_cpu_set : private std::set< basic_cpu< TRAITS > >
      * \param a first operand.
      * \param b second operand.
      */
-    friend void swap(basic_cpu_set &a, basic_cpu_set &b) noexcept(
-        noexcept(a.swap(b)))
+    friend void swap(basic_cpu_set &a,
+                     basic_cpu_set &b) noexcept(noexcept(a.swap(b)))
     {
         a.swap(b);
     }
@@ -241,7 +241,8 @@ class basic_cpu_set : private std::set< basic_cpu< TRAITS > >
         bool first = true;
         for (const auto &cpu : obj)
         {
-            if (!first) s << ", ";
+            if (!first)
+                s << ", ";
             first = false;
             s << cpu;
         }

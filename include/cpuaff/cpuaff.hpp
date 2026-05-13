@@ -34,7 +34,7 @@
  *
  * Pulls in \ref config.hpp (Linux-only platform check + the
  * \ref cpuaff::traits assembly), the \ref cpuaff::expected /
- * \ref cpuaff::affinity_errc diagnostic surface, \ref cpu_spec, and
+ * \ref cpuaff::affinity_errc diagnostic surface, \ref cpuaff::cpu_spec, and
  * the user-facing \c basic_* class templates from \c impl/, then
  * binds them against \ref cpuaff::traits to expose the public type
  * names (\ref cpuaff::affinity_manager, \ref cpuaff::cpu, etc.).

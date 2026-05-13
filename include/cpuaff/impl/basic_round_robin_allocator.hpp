@@ -74,7 +74,8 @@ class basic_round_robin_allocator
 
    public:
     /*!
-     * \brief Constructs a basic_round_robin_allocator with the given set of cpus.
+     * \brief Constructs a basic_round_robin_allocator with the given set of
+     * cpus.
      *
      * \param cpus the set of cpus that this allocator should iterate over.
      */
@@ -95,8 +96,9 @@ class basic_round_robin_allocator
      *             and surfaces \c allocator_empty rather than
      *             UB-ing on an empty allocator.
      */
-    [[deprecated("use try_allocate() — returns cpuaff::expected and "
-                 "doesn't UB on an empty allocator")]]
+    [[deprecated(
+        "use try_allocate() — returns cpuaff::expected and "
+        "doesn't UB on an empty allocator")]]
     inline cpu_type allocate()
     {
         cpu_type retval = cpu_queue_.front();
@@ -124,7 +126,8 @@ class basic_round_robin_allocator
 
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (cpu_queue_.empty()) return !cpus.empty();
+            if (cpu_queue_.empty())
+                return !cpus.empty();
             cpu_type retval = cpu_queue_.front();
             cpu_queue_.pop();
             cpu_queue_.push(retval);
@@ -172,7 +175,7 @@ class basic_round_robin_allocator
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_type, std::error_code >
-    try_allocate()
+        try_allocate()
     {
         if (cpu_queue_.empty())
         {
@@ -201,12 +204,13 @@ class basic_round_robin_allocator
      * \since v2.0.0-htaa.beta.1
      */
     [[nodiscard]] inline cpuaff::expected< cpu_set_type, std::error_code >
-    try_allocate(uint32_t count)
+        try_allocate(uint32_t count)
     {
         cpu_set_type out;
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (cpu_queue_.empty()) break;
+            if (cpu_queue_.empty())
+                break;
             cpu_type retval = cpu_queue_.front();
             cpu_queue_.pop();
             cpu_queue_.push(retval);

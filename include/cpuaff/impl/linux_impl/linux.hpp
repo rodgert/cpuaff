@@ -224,7 +224,8 @@ struct cpu_loader
 inline long detect_ncpus_for_affinity()
 {
     long n = sysconf(_SC_NPROCESSORS_CONF);
-    if (n < CPU_SETSIZE) n = CPU_SETSIZE;
+    if (n < CPU_SETSIZE)
+        n = CPU_SETSIZE;
     return n;
 }
 
@@ -310,8 +311,7 @@ struct get_affinity
      *         a cpuaff-tagged code on failure.
      */
     inline std::error_code query(
-        pthread_t t,
-        std::set< cpu_identifier_wrapper > &cpus) const noexcept
+        pthread_t t, std::set< cpu_identifier_wrapper > &cpus) const noexcept
     {
         const long ncpus = detect_ncpus_for_affinity();
         const size_t mask_size = CPU_ALLOC_SIZE(ncpus);
@@ -362,8 +362,7 @@ struct set_affinity
      * \param cpus mask to apply.
      * \return \c true on success, \c false on any failure.
      */
-    inline bool operator()(
-        const std::set< cpu_identifier_wrapper > &cpus) const
+    inline bool operator()(const std::set< cpu_identifier_wrapper > &cpus) const
     {
         return !apply(cpus);
     }
@@ -381,7 +380,8 @@ struct set_affinity
         cpu_set_t *mask = nullptr;
         size_t mask_size = 0;
         const std::error_code alloc_ec = build_mask(cpus, mask, mask_size);
-        if (alloc_ec) return alloc_ec;
+        if (alloc_ec)
+            return alloc_ec;
 
         std::error_code ec;
         if (sched_setaffinity(0, mask_size, mask) != 0)
@@ -411,7 +411,8 @@ struct set_affinity
         cpu_set_t *mask = nullptr;
         size_t mask_size = 0;
         const std::error_code alloc_ec = build_mask(cpus, mask, mask_size);
-        if (alloc_ec) return alloc_ec;
+        if (alloc_ec)
+            return alloc_ec;
 
         std::error_code ec;
         const int rc = pthread_setaffinity_np(t, mask_size, mask);
@@ -451,7 +452,8 @@ struct set_affinity
         for (const auto &w : cpus)
         {
             const long id = static_cast< long >(w.get());
-            if (id >= ncpus) ncpus = id + 1;
+            if (id >= ncpus)
+                ncpus = id + 1;
         }
 
         mask_size = CPU_ALLOC_SIZE(ncpus);

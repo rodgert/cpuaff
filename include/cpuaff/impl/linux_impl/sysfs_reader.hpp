@@ -304,8 +304,8 @@ inline bool load_cpus(std::vector< pu > &pus)
                 while ((ent = readdir(dir)) != nullptr)
                 {
                     std::string_view name(ent->d_name);
-                    if (name.size() < 4
-                        || name.substr(0, 3) != std::string_view("cpu"))
+                    if (name.size() < 4 ||
+                        name.substr(0, 3) != std::string_view("cpu"))
                     {
                         continue;
                     }
@@ -314,8 +314,8 @@ inline bool load_cpus(std::vector< pu > &pus)
                     int32_t cpu = -1;
                     auto [p, ec] = std::from_chars(
                         suffix.data(), suffix.data() + suffix.size(), cpu);
-                    if (ec != std::errc{}
-                        || p != suffix.data() + suffix.size() || cpu < 0)
+                    if (ec != std::errc{} ||
+                        p != suffix.data() + suffix.size() || cpu < 0)
                     {
                         continue;
                     }

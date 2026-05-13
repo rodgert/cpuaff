@@ -43,7 +43,8 @@ int main(int argc, char *argv[])
 
     cpuaff::affinity_stack stack(manager);
 
-    auto print = [&manager](const char *label) -> int {
+    auto print = [&manager](const char *label) -> int
+    {
         auto cpus = manager.try_get_affinity();
         if (!cpus)
         {
@@ -57,12 +58,13 @@ int main(int argc, char *argv[])
         return 0;
     };
 
-    if (print("Initial Affinity:") != 0) return -1;
+    if (print("Initial Affinity:") != 0)
+        return -1;
 
     if (auto r = stack.try_push_affinity(); !r)
     {
-        std::cerr << "cpuaff: try_push_affinity failed: "
-                  << r.error().message() << std::endl;
+        std::cerr << "cpuaff: try_push_affinity failed: " << r.error().message()
+                  << std::endl;
         return -1;
     }
 
@@ -71,22 +73,24 @@ int main(int argc, char *argv[])
     manager.get_cpus_by_core(core_0, 0);
     if (auto r = manager.try_set_affinity(core_0); !r)
     {
-        std::cerr << "cpuaff: try_set_affinity failed: "
-                  << r.error().message() << std::endl;
+        std::cerr << "cpuaff: try_set_affinity failed: " << r.error().message()
+                  << std::endl;
         return -1;
     }
 
-    if (print("Affinity After Calling try_set_affinity():") != 0) return -1;
+    if (print("Affinity After Calling try_set_affinity():") != 0)
+        return -1;
 
     // Restore the affinity to its initial value.
     if (auto r = stack.try_pop_affinity(); !r)
     {
-        std::cerr << "cpuaff: try_pop_affinity failed: "
-                  << r.error().message() << std::endl;
+        std::cerr << "cpuaff: try_pop_affinity failed: " << r.error().message()
+                  << std::endl;
         return -1;
     }
 
-    if (print("Affinity After Calling try_pop_affinity():") != 0) return -1;
+    if (print("Affinity After Calling try_pop_affinity():") != 0)
+        return -1;
 
     return 0;
 }
